@@ -1,0 +1,13 @@
+/build/
+/out/
+/dist/
+*.log
+*.bin
+*.obj
+*.o
+*.pdb
+*.ilk
+*.dll
+*.exe
+*.DS_Store
+Thumbs.db
