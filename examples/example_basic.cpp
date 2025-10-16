@@ -1,4 +1,4 @@
-#include <trace_scope.hpp>
+#include "../include/trace_scope.hpp"
 #include <thread>
 #include <chrono>
 #include <cstdio>
@@ -24,7 +24,7 @@ int main() {
         TRACE_MSG("t1 starting");
         foo();
         TRACE_MSG("t1 done");
-        trace::flush_current_thread();
+        trace::flush_ring(trace::thread_ring());
     });
 
     foo();
