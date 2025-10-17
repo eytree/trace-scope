@@ -80,9 +80,11 @@ def add_trace_scopes(content: str) -> str:
         insert_pos = brace_pos + 1
         
         # Check if TRACE_SCOPE already exists in this function
-        # Look ahead a few characters to see if it's already there
-        lookahead = result[insert_pos:insert_pos+200]
-        if 'TRACE_SCOPE()' in lookahead.split('\n')[0:3]:
+        # Look at the content right after the opening brace
+        after_brace = result[insert_pos:insert_pos+300]
+        # Get first few non-empty lines after the brace
+        lines_after = [l.strip() for l in after_brace.split('\n')[0:5] if l.strip()]
+        if lines_after and 'TRACE_SCOPE()' in lines_after[0]:
             print(f"  Skipping {func_name} (already has TRACE_SCOPE)")
             continue
         
