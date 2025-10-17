@@ -94,7 +94,7 @@ By default, trace_scope is header-only. Each DLL gets its own copy of trace stat
 
 To share trace state across DLLs:
 
-1. **Create implementation file** (e.g., `trace_impl.cpp` in your main executable):
+1. **Create implementation file** (see `src/trace_scope_impl.cpp` template):
 ```cpp
 #define TRACE_SCOPE_IMPLEMENTATION
 #include <trace_scope.hpp>
@@ -103,10 +103,10 @@ To share trace state across DLLs:
 2. **Define `TRACE_SCOPE_SHARED`** when compiling all files:
 ```bash
 # Windows (MSVC)
-cl /DTRACE_SCOPE_SHARED /DTRACE_SCOPE_IMPLEMENTATION trace_impl.cpp main.cpp
+cl /DTRACE_SCOPE_SHARED /DTRACE_SCOPE_IMPLEMENTATION src/trace_scope_impl.cpp main.cpp
 
 # Linux/Mac (GCC/Clang)
-g++ -DTRACE_SCOPE_SHARED -DTRACE_SCOPE_IMPLEMENTATION trace_impl.cpp main.cpp
+g++ -DTRACE_SCOPE_SHARED -DTRACE_SCOPE_IMPLEMENTATION src/trace_scope_impl.cpp main.cpp
 ```
 
 3. **In other files**, just include normally:
@@ -161,7 +161,7 @@ Durations automatically scale for readability:
 
 See `examples/` directory:
 - `example_basic.cpp`: Basic usage with threads
-- `trace_scope_impl.cpp`: DLL-safe implementation template
+- `src/trace_scope_impl.cpp`: DLL-safe implementation template
 
 See `tests/` directory:
 - `test_trace.cpp`: Basic functionality tests

@@ -15,7 +15,7 @@
  */
 
 #define TRACE_SCOPE_IMPLEMENTATION
-#include "include/trace_scope.hpp"
+#include "../include/trace_scope.hpp"
 
 // When TRACE_SCOPE_SHARED is defined, this file provides the single
 // definition of the shared config variable
