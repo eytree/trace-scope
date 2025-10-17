@@ -181,18 +181,6 @@ void process(int id, const std::string& name) {
 }
 ```
 
-### Drop-In Replacement
-
-If you have existing stream-based logging macros:
-
-```cpp
-// Before:
-// KY_COUT("Value: " << x << ", Count: " << y);
-
-// After (direct replacement):
-TRACE_LOG << "Value: " << x << ", Count: " << y;
-```
-
 ### Printf vs Stream Style
 
 Both styles work equally well - choose based on preference:
@@ -487,9 +475,3 @@ See LICENSE file.
 
 **Long delays on exit**: Disable `auto_flush_at_exit` and manually flush before returning
 
-## Contributing
-
-Contributions welcome! Please ensure:
-- Tests pass (`test_comprehensive`)
-- Code follows existing style
-- Documentation updated for new features
