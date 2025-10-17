@@ -29,4 +29,7 @@ if(BUILD_TESTS)
   
   add_executable(test_comprehensive tests/test_comprehensive.cpp)
   target_link_libraries(test_comprehensive PRIVATE trace_scope)
+  
+  add_executable(test_binary_format tests/test_binary_format.cpp)
+  target_link_libraries(test_binary_format PRIVATE trace_scope)
 endif()
