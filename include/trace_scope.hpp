@@ -120,6 +120,9 @@ struct Config {
     const char* enter_marker = "-> ";   ///< Marker for function entry (e.g., "-> ", "↘ ", "► ")
     const char* exit_marker = "<- ";    ///< Marker for function exit (e.g., "<- ", "↖ ", "◄ ")
     const char* msg_marker = "- ";      ///< Marker for message events (e.g., "- ", "• ", "* ")
+    
+    // ANSI color support
+    bool colorize_depth = false;        ///< Colorize output based on call depth (opt-in, ANSI colors)
 };
 TRACE_SCOPE_VAR Config config;
 
@@ -460,6 +463,14 @@ inline const char* base_name(const char* p) {
  * @param out Output file stream
  */
 inline void print_event(const Event& e, FILE* out) {
+    // ANSI color for depth-based colorization (6-color wheel)
+    if (get_config().colorize_depth && e.depth > 0) {
+        // Color wheel: Red, Green, Yellow, Blue, Magenta, Cyan
+        static const int colors[] = {31, 32, 33, 34, 35, 36};
+        int color = colors[e.depth % 6];
+        std::fprintf(out, "\033[%dm", color);
+    }
+    
     if (get_config().print_timestamp) {
         // Convert ns timestamp to human-readable ISO format with milliseconds
         auto duration = std::chrono::nanoseconds(e.ts_ns);
@@ -536,28 +547,34 @@ inline void print_event(const Event& e, FILE* out) {
 
     switch (e.type) {
     case EventType::Enter:
-        std::fprintf(out, "%s%s\n", enter_mk, e.func);
+        std::fprintf(out, "%s%s", enter_mk, e.func);
         break;
     case EventType::Exit:
         if (get_config().print_timing) {
             // Auto-scale units based on duration
             if (e.dur_ns < 1000ULL) {
-                std::fprintf(out, "%s%s  [%llu ns]\n", exit_mk, e.func, (unsigned long long)e.dur_ns);
+                std::fprintf(out, "%s%s  [%llu ns]", exit_mk, e.func, (unsigned long long)e.dur_ns);
             } else if (e.dur_ns < 1000000ULL) {
-                std::fprintf(out, "%s%s  [%.2f us]\n", exit_mk, e.func, e.dur_ns / 1000.0);
+                std::fprintf(out, "%s%s  [%.2f us]", exit_mk, e.func, e.dur_ns / 1000.0);
             } else if (e.dur_ns < 1000000000ULL) {
-                std::fprintf(out, "%s%s  [%.2f ms]\n", exit_mk, e.func, e.dur_ns / 1000000.0);
+                std::fprintf(out, "%s%s  [%.2f ms]", exit_mk, e.func, e.dur_ns / 1000000.0);
             } else {
-                std::fprintf(out, "%s%s  [%.3f s]\n", exit_mk, e.func, e.dur_ns / 1000000000.0);
+                std::fprintf(out, "%s%s  [%.3f s]", exit_mk, e.func, e.dur_ns / 1000000000.0);
             }
         } else {
-            std::fprintf(out, "%s%s\n", exit_mk, e.func);
+            std::fprintf(out, "%s%s", exit_mk, e.func);
         }
         break;
     case EventType::Msg:
-        std::fprintf(out, "%s%s\n", msg_mk, e.msg[0] ? e.msg : "");
+        std::fprintf(out, "%s%s", msg_mk, e.msg[0] ? e.msg : "");
         break;
     }
+    
+    // Reset color and add newline
+    if (get_config().colorize_depth && e.depth > 0) {
+        std::fprintf(out, "\033[0m");  // Reset to default color
+    }
+    std::fprintf(out, "\n");
 }
 
 /**

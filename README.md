@@ -73,6 +73,7 @@ trace::config.indent_marker = "| ";         // Indent marker (default: "| ")
 trace::config.enter_marker = "-> ";         // Function entry marker (default: "-> ")
 trace::config.exit_marker = "<- ";          // Function exit marker (default: "<- ")
 trace::config.msg_marker = "- ";            // Message marker (default: "- ")
+trace::config.colorize_depth = false;       // ANSI color by depth (default: false, opt-in)
 
 // Advanced options
 trace::config.immediate_mode = false;       // Real-time output (default: false, opt-in)
@@ -105,6 +106,42 @@ trace::config.msg_marker = ". ";
 // No markers
 trace::config.show_indent_markers = false;  // Use plain whitespace
 ```
+
+### ANSI Color Support
+
+For easier visual tracking of call depths, enable ANSI color-coding:
+
+```cpp
+trace::config.colorize_depth = true;  // Enable depth-based coloring
+```
+
+Each call depth level gets a different color from a 6-color wheel:
+- **Depth 1:** Green
+- **Depth 2:** Yellow
+- **Depth 3:** Blue
+- **Depth 4:** Magenta
+- **Depth 5:** Cyan
+- **Depth 6:** Red (then cycles back to Green)
+
+**Example:**
+```cpp
+void foo() {
+    TRACE_SCOPE();  // Depth 1 = Green
+    bar();
+}
+
+void bar() {
+    TRACE_SCOPE();  // Depth 2 = Yellow
+    baz();
+}
+```
+
+**Notes:**
+- Colors only work in ANSI-compatible terminals (most modern terminals)
+- Windows Terminal, Linux terminals, macOS Terminal all support ANSI
+- Old Windows cmd.exe may not display colors correctly (use Windows Terminal instead)
+- Works with all marker styles (ASCII, Unicode, box-drawing)
+- See `examples/example_colors.cpp` for a demonstration
 
 ## Immediate Mode
 
@@ -306,6 +343,7 @@ See `examples/` directory:
 - `example_basic.cpp`: Basic usage with multi-threaded tracing and stream logging
 - `example_dll_shared.cpp`: Header-only DLL state sharing demonstration
 - `example_custom_markers.cpp`: Customizing visual markers (ASCII, Unicode, box-drawing)
+- `example_colors.cpp`: ANSI color-coded output by call depth
 - `src/trace_scope_impl.cpp`: Advanced DLL compilation-based sharing template
 
 See `tests/` directory:

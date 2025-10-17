@@ -25,6 +25,9 @@ target_link_libraries(example_dll_shared PRIVATE trace_scope)
 add_executable(example_custom_markers examples/example_custom_markers.cpp)
 target_link_libraries(example_custom_markers PRIVATE trace_scope)
 
+add_executable(example_colors examples/example_colors.cpp)
+target_link_libraries(example_colors PRIVATE trace_scope)
+
 # Tests
 if(BUILD_TESTS)
   add_executable(test_trace tests/test_trace.cpp)
