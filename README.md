@@ -416,7 +416,14 @@ See `tools/` directory:
 - Adds/removes TRACE_SCOPE() from C++ files
 - Usage: `python tools/trace_instrument.py add file.cpp`
 - Usage: `python tools/trace_instrument.py remove file.cpp`
+- Tests: `python tools/test_trace_instrument.py`
 - See "Automatic Instrumentation Tool" section for details
+
+**Python Tool Tests:**
+- `test_trace_instrument.py` - Unit tests for instrumentation tool (11 tests)
+- `test_trc_pretty.py` - Unit tests for binary parser (10 tests)
+- Both require Python 3.6+
+- Run tests to verify tools work correctly on your system
 
 ## Building
 
@@ -435,10 +442,15 @@ cmake --build .
 
 ## Requirements
 
+**C++ Library:**
 - C++17 or later
 - CMake 3.16+ (for building tests/examples)
 - Windows: MSVC 2019+, MinGW, or Clang
 - Linux/Mac: GCC 7+, Clang 5+
+
+**Python Tools** (optional):
+- Python 3.6+ (for trc_pretty.py, trace_instrument.py)
+- No external dependencies (uses only standard library)
 
 ## License
 
