@@ -8,12 +8,26 @@
  *  - TRACE_MSG(fmt, ...): buffered message event at current depth (file:line).
  *  - Per-thread lock-free ring buffer; global flush to text.
  *  - dump_binary(path): compact binary dump + tools/trc_pretty.py pretty printer.
+ *  - Optional DLL-safe mode via TRACE_SCOPE_IMPLEMENTATION.
  *
  * Build-time defines:
  *   TRACE_ENABLED   (default 1)
  *   TRACE_RING_CAP  (default 4096)  // events per thread
  *   TRACE_MSG_CAP   (default 192)   // max message size
  *   TRACE_DEPTH_MAX (default 512)   // max nesting depth tracked for durations
+ *
+ * DLL Boundary Support:
+ *   By default, this is a header-only library. Each DLL/executable gets its own
+ *   copy of the trace state, which may not be desired.
+ *
+ *   To share trace state across DLL boundaries:
+ *   1. In ONE .cpp file in your main executable or shared DLL, define:
+ *      #define TRACE_SCOPE_IMPLEMENTATION
+ *      #include <trace_scope.hpp>
+ *   2. In all other files, just #include <trace_scope.hpp> normally.
+ *   3. Define TRACE_SCOPE_SHARED when building DLLs that need to share state.
+ *
+ *   This creates exported symbols that can be shared across DLL boundaries.
  */
 
 #include <atomic>
@@ -27,6 +41,32 @@
 #include <thread>
 #include <vector>
 #include <algorithm>
+
+// DLL export/import macros for shared state across DLL boundaries
+#ifndef TRACE_SCOPE_API
+  #if defined(TRACE_SCOPE_SHARED)
+    #if defined(_WIN32) || defined(__CYGWIN__)
+      #if defined(TRACE_SCOPE_IMPLEMENTATION)
+        #define TRACE_SCOPE_API __declspec(dllexport)
+      #else
+        #define TRACE_SCOPE_API __declspec(dllimport)
+      #endif
+    #elif defined(__GNUC__) && __GNUC__ >= 4
+      #define TRACE_SCOPE_API __attribute__((visibility("default")))
+    #else
+      #define TRACE_SCOPE_API
+    #endif
+  #else
+    #define TRACE_SCOPE_API
+  #endif
+#endif
+
+// Storage class for variables: inline for header-only, extern for DLL shared
+#if defined(TRACE_SCOPE_SHARED) && !defined(TRACE_SCOPE_IMPLEMENTATION)
+  #define TRACE_SCOPE_VAR extern TRACE_SCOPE_API
+#else
+  #define TRACE_SCOPE_VAR inline
+#endif
 
 #ifndef TRACE_ENABLED
 #define TRACE_ENABLED 1
@@ -52,6 +92,7 @@ struct Config {
     bool print_timestamp = false;     // show timestamp (opt-in)
     bool print_thread = true;
     bool auto_flush_at_exit = false;  // automatically flush at program exit (opt-in)
+    bool immediate_mode = false;      // bypass ring buffer, print immediately (opt-in, for long-running processes)
 
     // When true we include filename:line in the left prefix
     bool include_file_line = true;
@@ -66,7 +107,7 @@ struct Config {
     bool include_function_name = true;  // show function name in prefix (line number pairs with this)
     int  function_width = 20;           // fixed width for function name column
 };
-inline Config config;
+TRACE_SCOPE_VAR Config config;
 
 enum class EventType : uint8_t { Enter = 0, Exit = 1, Msg = 2 };
 
@@ -82,6 +123,9 @@ struct Event {
     char        msg[TRACE_MSG_CAP + 1];///< Msg payload if type==Msg, else ""
 };
 
+// Forward declaration for immediate mode
+inline void print_event(const Event& e, FILE* out);
+
 struct Ring {
     Event     buf[TRACE_RING_CAP];
     uint32_t  head = 0;
@@ -96,7 +140,7 @@ struct Ring {
         const auto now = std::chrono::system_clock::now().time_since_epoch();
         uint64_t now_ns = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
 
-        Event& e = buf[head];
+        Event e;
         e.ts_ns = now_ns;
         e.func  = func;
         e.file  = file;
@@ -126,8 +170,19 @@ struct Ring {
             e.depth = depth;
         }
 
-        head = (head + 1) % TRACE_RING_CAP;
-        if (head == 0) ++wraps;
+        // Immediate mode: print directly instead of buffering
+        if (config.immediate_mode) {
+            static std::mutex io_mtx;
+            std::lock_guard<std::mutex> lock(io_mtx);
+            FILE* out = config.out ? config.out : stdout;
+            print_event(e, out);
+            std::fflush(out);
+        } else {
+            // Buffered mode: write to ring buffer
+            buf[head] = e;
+            head = (head + 1) % TRACE_RING_CAP;
+            if (head == 0) ++wraps;
+        }
     }
 
     inline void write_msg(const char* file, int line, const char* fmt, va_list ap) {
@@ -137,12 +192,43 @@ struct Ring {
         if (d < TRACE_DEPTH_MAX) {
             current_func = func_stack[d];
         }
-        write(EventType::Msg, current_func, file, line);
-        Event& e = buf[(head + TRACE_RING_CAP - 1) % TRACE_RING_CAP];
-        if (!fmt) { e.msg[0] = 0; return; }
-        int n = std::vsnprintf(e.msg, TRACE_MSG_CAP, fmt, ap);
-        if (n < 0) e.msg[0] = 0;
-        else e.msg[std::min(n, TRACE_MSG_CAP)] = 0;
+        
+        if (config.immediate_mode) {
+            // Immediate mode: format and print directly
+            const auto now = std::chrono::system_clock::now().time_since_epoch();
+            uint64_t now_ns = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
+            
+            Event e;
+            e.ts_ns = now_ns;
+            e.func = current_func;
+            e.file = file;
+            e.line = line;
+            e.tid = tid;
+            e.type = EventType::Msg;
+            e.depth = depth;
+            e.dur_ns = 0;
+            
+            if (!fmt) { e.msg[0] = 0; } 
+            else {
+                int n = std::vsnprintf(e.msg, TRACE_MSG_CAP, fmt, ap);
+                if (n < 0) e.msg[0] = 0;
+                else e.msg[std::min(n, TRACE_MSG_CAP)] = 0;
+            }
+            
+            static std::mutex io_mtx;
+            std::lock_guard<std::mutex> lock(io_mtx);
+            FILE* out = config.out ? config.out : stdout;
+            print_event(e, out);
+            std::fflush(out);
+        } else {
+            // Buffered mode: write to ring buffer
+            write(EventType::Msg, current_func, file, line);
+            Event& e = buf[(head + TRACE_RING_CAP - 1) % TRACE_RING_CAP];
+            if (!fmt) { e.msg[0] = 0; return; }
+            int n = std::vsnprintf(e.msg, TRACE_MSG_CAP, fmt, ap);
+            if (n < 0) e.msg[0] = 0;
+            else e.msg[std::min(n, TRACE_MSG_CAP)] = 0;
+        }
     }
 };
 
@@ -156,10 +242,22 @@ struct Registry {
     }
 };
 
+#if defined(TRACE_SCOPE_SHARED)
+// For DLL sharing: use extern/exported variable
+TRACE_SCOPE_API Registry& registry();
+#if defined(TRACE_SCOPE_IMPLEMENTATION)
+Registry& registry() {
+    static Registry r;
+    return r;
+}
+#endif
+#else
+// For header-only: inline function with static local
 inline Registry& registry() {
     static Registry r;
     return r;
 }
+#endif
 
 inline uint32_t thread_id_hash() {
     auto id = std::this_thread::get_id();
@@ -224,11 +322,8 @@ inline void print_event(const Event& e, FILE* out) {
             const char* path = config.show_full_path ? e.file : base_name(e.file);
             const int fw = (config.filename_width > 0 ? config.filename_width : 20);
             
-            // Tail-truncate so rightmost characters (often the actual name) remain visible
-            size_t plen = std::strlen(path);
-            const char* start = (plen > (size_t)fw) ? (path + (plen - fw)) : path;
-            
-            std::fprintf(out, "%-*.*s", fw, fw, start);
+            // Head-truncate: show beginning of path (precision limits max chars printed)
+            std::fprintf(out, "%-*.*s", fw, fw, path);
             printed_something = true;
         }
         
@@ -244,11 +339,8 @@ inline void print_event(const Event& e, FILE* out) {
             // Print line number
             std::fprintf(out, "%*d", lw, e.line);
             
-            // Tail-truncate function name if needed
-            size_t flen = std::strlen(fname);
-            const char* fstart = (flen > (size_t)funcw) ? (fname + (flen - funcw)) : fname;
-            
-            std::fprintf(out, " %-*.*s", funcw, funcw, fstart);
+            // Head-truncate function name: show beginning (precision limits max chars)
+            std::fprintf(out, " %-*.*s", funcw, funcw, fname);
             printed_something = true;
         }
         
