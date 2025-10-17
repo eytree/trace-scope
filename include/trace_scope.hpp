@@ -115,6 +115,15 @@ struct Config {
 };
 TRACE_SCOPE_VAR Config config;
 
+// Forward declarations for external state system
+struct Registry;
+inline Config& get_config();
+
+// External state pointers for DLL-safe cross-boundary tracing (header-only solution)
+// When set, these override the default inline instances
+inline Config* g_external_config = nullptr;
+inline Registry* g_external_registry = nullptr;
+
 /** @brief Type of trace event */
 enum class EventType : uint8_t { 
     Enter = 0,  ///< Function entry
@@ -206,10 +215,10 @@ struct Ring {
         }
 
         // Immediate mode: print directly instead of buffering
-        if (config.immediate_mode) {
+        if (get_config().immediate_mode) {
             static std::mutex io_mtx;
             std::lock_guard<std::mutex> lock(io_mtx);
-            FILE* out = config.out ? config.out : stdout;
+            FILE* out = get_config().out ? get_config().out : stdout;
             print_event(e, out);
             std::fflush(out);
         } else {
@@ -240,7 +249,7 @@ struct Ring {
             current_func = func_stack[d];
         }
         
-        if (config.immediate_mode) {
+        if (get_config().immediate_mode) {
             // Immediate mode: format and print directly
             const auto now = std::chrono::system_clock::now().time_since_epoch();
             uint64_t now_ns = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
@@ -264,7 +273,7 @@ struct Ring {
             
             static std::mutex io_mtx;
             std::lock_guard<std::mutex> lock(io_mtx);
-            FILE* out = config.out ? config.out : stdout;
+            FILE* out = get_config().out ? get_config().out : stdout;
             print_event(e, out);
             std::fflush(out);
         } else {
@@ -299,15 +308,63 @@ struct Registry {
     }
 };
 
+/**
+ * @brief Set external state for DLL-safe cross-boundary tracing (header-only solution).
+ * 
+ * Call this once from the main executable before any tracing occurs,
+ * providing pointers to config and registry instances that live in
+ * a shared location (e.g., main executable). All DLLs must call this
+ * with the same instances to share trace state.
+ * 
+ * This is the recommended approach for DLL scenarios when you cannot
+ * control which files are compiled (purely header-only solution).
+ * 
+ * @param cfg Pointer to shared Config instance (must outlive all tracing)
+ * @param reg Pointer to shared Registry instance (must outlive all tracing)
+ * 
+ * Example:
+ * @code
+ * // In main.cpp or shared header:
+ * static trace::Config g_trace_config;
+ * static trace::Registry g_trace_registry;
+ * 
+ * int main() {
+ *     trace::set_external_state(&g_trace_config, &g_trace_registry);
+ *     // Now all DLLs share the same state
+ * }
+ * @endcode
+ */
+inline void set_external_state(Config* cfg, Registry* reg) {
+    g_external_config = cfg;
+    g_external_registry = reg;
+}
+
+/**
+ * @brief Get the active config instance.
+ * 
+ * Returns external config if set via set_external_state(),
+ * otherwise returns the default inline instance.
+ * 
+ * @return Reference to the active Config
+ */
+inline Config& get_config() {
+    return g_external_config ? *g_external_config : config;
+}
+
 #if defined(TRACE_SCOPE_SHARED)
 // For DLL sharing: use extern/exported variable
 TRACE_SCOPE_API Registry& registry();
 #if defined(TRACE_SCOPE_IMPLEMENTATION)
 /**
  * @brief Get the global registry instance (DLL-shared version).
- * @return Reference to the singleton Registry
+ * 
+ * Checks for external registry first (set via set_external_state()),
+ * otherwise returns the static instance.
+ * 
+ * @return Reference to the active Registry
  */
 Registry& registry() {
+    if (g_external_registry) return *g_external_registry;
     static Registry r;
     return r;
 }
@@ -316,9 +373,14 @@ Registry& registry() {
 // For header-only: inline function with static local
 /**
  * @brief Get the global registry instance (header-only version).
- * @return Reference to the singleton Registry
+ * 
+ * Checks for external registry first (set via set_external_state()),
+ * otherwise returns the static instance.
+ * 
+ * @return Reference to the active Registry
  */
 inline Registry& registry() {
+    if (g_external_registry) return *g_external_registry;
     static Registry r;
     return r;
 }
@@ -390,7 +452,7 @@ inline const char* base_name(const char* p) {
  * @param out Output file stream
  */
 inline void print_event(const Event& e, FILE* out) {
-    if (config.print_timestamp) {
+    if (get_config().print_timestamp) {
         // Convert ns timestamp to human-readable ISO format with milliseconds
         auto duration = std::chrono::nanoseconds(e.ts_ns);
         auto tp = std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>(duration);
@@ -409,16 +471,16 @@ inline void print_event(const Event& e, FILE* out) {
             tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday,
             tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec, (int)ms.count());
     }
-    if (config.print_thread)    std::fprintf(out, "(%08x) ", e.tid);
+    if (get_config().print_thread)    std::fprintf(out, "(%08x) ", e.tid);
 
     // Filename:line:function prefix block (fixed widths), before indent so alignment is stable
-    if (config.include_file_line && e.file) {
+    if (get_config().include_file_line && e.file) {
         bool printed_something = false;
         
         // Print filename if enabled
-        if (config.include_filename) {
-            const char* path = config.show_full_path ? e.file : base_name(e.file);
-            const int fw = (config.filename_width > 0 ? config.filename_width : 20);
+        if (get_config().include_filename) {
+            const char* path = get_config().show_full_path ? e.file : base_name(e.file);
+            const int fw = (get_config().filename_width > 0 ? get_config().filename_width : 20);
             
             // Head-truncate: show beginning of path (precision limits max chars printed)
             std::fprintf(out, "%-*.*s", fw, fw, path);
@@ -426,9 +488,9 @@ inline void print_event(const Event& e, FILE* out) {
         }
         
         // Print line number and function name if enabled (they're paired)
-        if (config.include_function_name) {
-            const int lw = (config.line_width > 0 ? config.line_width : 5);
-            const int funcw = (config.function_width > 0 ? config.function_width : 20);
+        if (get_config().include_function_name) {
+            const int lw = (get_config().line_width > 0 ? get_config().line_width : 5);
+            const int funcw = (get_config().function_width > 0 ? get_config().function_width : 20);
             const char* fname = e.func ? e.func : "";
             
             // Print colon separator if filename was printed
@@ -453,7 +515,7 @@ inline void print_event(const Event& e, FILE* out) {
         std::fprintf(out, "-> %s\n", e.func);
         break;
     case EventType::Exit:
-        if (config.print_timing) {
+        if (get_config().print_timing) {
             // Auto-scale units based on duration
             if (e.dur_ns < 1000ULL) {
                 std::fprintf(out, "<- %s  [%llu ns]\n", e.func, (unsigned long long)e.dur_ns);
@@ -486,7 +548,7 @@ inline void print_event(const Event& e, FILE* out) {
 inline void flush_ring(const Ring& r) {
     static std::mutex io_mtx;
     std::lock_guard<std::mutex> guard(io_mtx);
-    FILE* out = config.out ? config.out : stdout;
+    FILE* out = get_config().out ? get_config().out : stdout;
 
     uint32_t count = (r.wraps == 0) ? r.head : TRACE_RING_CAP;
     uint32_t start = (r.wraps == 0) ? 0 : r.head;
@@ -520,7 +582,7 @@ inline void flush_all() {
  * @param final_depth The depth after the scope exits
  */
 inline void check_auto_flush_on_scope_exit(int final_depth) {
-    if (config.auto_flush_at_exit && final_depth == 0) {
+    if (get_config().auto_flush_at_exit && final_depth == 0) {
         flush_all();
     }
 }

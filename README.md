@@ -88,33 +88,56 @@ Trade-offs:
 - Thread-safe but serialized (mutex-protected output)
 - No post-processing needed (no flush required)
 
-## DLL Boundary Support
+## DLL Boundary Support (Header-Only Solution)
 
-By default, trace_scope is header-only. Each DLL gets its own copy of trace state.
+### The Problem
 
-To share trace state across DLLs:
+By default, trace_scope is header-only. When used across multiple DLLs, each DLL gets its own copy of the global state (config and registry). This means traces from different DLLs won't be combined.
 
-1. **Create implementation file** (see `src/trace_scope_impl.cpp` template):
+### Recommended Solution: External State Injection
+
+**For large codebases where you cannot control which files are compiled**, use the header-only external state injection:
+
+1. **Create shared state in your main executable** (or a common header):
 ```cpp
-#define TRACE_SCOPE_IMPLEMENTATION
-#include <trace_scope.hpp>
+// In main.cpp or a shared header included by all DLLs:
+namespace {
+    trace::Config g_trace_config;
+    trace::Registry g_trace_registry;
+}
+
+int main() {
+    // Initialize shared state BEFORE any tracing occurs
+    trace::set_external_state(&g_trace_config, &g_trace_registry);
+    
+    // Configure as needed
+    g_trace_config.out = std::fopen("trace.log", "w");
+    
+    // Now all DLLs will share the same trace state!
+    // ...
+}
 ```
 
-2. **Define `TRACE_SCOPE_SHARED`** when compiling all files:
-```bash
-# Windows (MSVC)
-cl /DTRACE_SCOPE_SHARED /DTRACE_SCOPE_IMPLEMENTATION src/trace_scope_impl.cpp main.cpp
+2. **All DLLs automatically use the shared state** - no changes needed!
 
-# Linux/Mac (GCC/Clang)
-g++ -DTRACE_SCOPE_SHARED -DTRACE_SCOPE_IMPLEMENTATION src/trace_scope_impl.cpp main.cpp
-```
+**That's it!** Completely header-only, no compilation requirements, works across any number of DLLs.
 
-3. **In other files**, just include normally:
-```cpp
-#include <trace_scope.hpp>  // Will use shared state
-```
+### How It Works
 
-**Note**: Use TRACE_SCOPE_IMPLEMENTATION in only ONE .cpp file per executable/DLL.
+- `set_external_state()` sets global pointers to your instances
+- All trace operations check these pointers first
+- Falls back to default instances if not set
+- Thread-safe and zero overhead when not used
+
+### Alternative: Compilation-Based Sharing (Advanced)
+
+If you have control over the build system and prefer compile-time linking:
+
+1. Include `src/trace_scope_impl.cpp` in ONE compilation unit
+2. Define `TRACE_SCOPE_SHARED` when compiling all files
+3. See `src/trace_scope_impl.cpp` for detailed instructions
+
+This approach requires modifying your build system but avoids the runtime setup call.
 
 ## Binary Dump Format
 
@@ -160,8 +183,9 @@ Durations automatically scale for readability:
 ## Examples
 
 See `examples/` directory:
-- `example_basic.cpp`: Basic usage with threads
-- `src/trace_scope_impl.cpp`: DLL-safe implementation template
+- `example_basic.cpp`: Basic usage with multi-threaded tracing
+- `example_dll_shared.cpp`: Header-only DLL state sharing demonstration
+- `src/trace_scope_impl.cpp`: Advanced DLL compilation-based sharing template
 
 See `tests/` directory:
 - `test_trace.cpp`: Basic functionality tests

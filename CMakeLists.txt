@@ -15,9 +15,12 @@ else()
     target_compile_definitions(trace_scope INTERFACE TRACE_ENABLED=0)
 endif()
 
-# Example
+# Examples
 add_executable(example_basic examples/example_basic.cpp)
 target_link_libraries(example_basic PRIVATE trace_scope)
+
+add_executable(example_dll_shared examples/example_dll_shared.cpp)
+target_link_libraries(example_dll_shared PRIVATE trace_scope)
 
 # Tests
 if(BUILD_TESTS)
