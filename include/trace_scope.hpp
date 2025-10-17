@@ -463,12 +463,26 @@ inline const char* base_name(const char* p) {
  * @param out Output file stream
  */
 inline void print_event(const Event& e, FILE* out) {
-    // ANSI color for depth-based colorization (6-color wheel)
+    // ANSI color for depth-based colorization (gradient: green → yellow → orange → red)
     if (get_config().colorize_depth && e.depth > 0) {
-        // Color wheel: Red, Green, Yellow, Blue, Magenta, Cyan
-        static const int colors[] = {31, 32, 33, 34, 35, 36};
-        int color = colors[e.depth % 6];
-        std::fprintf(out, "\033[%dm", color);
+        // 256-color gradient for up to 30 levels: green shades → yellow → orange → red
+        // Using ANSI 256-color palette for smooth gradient
+        static const int gradient[] = {
+            // Green shades (depths 1-8)
+            34, 40, 46, 82, 118, 154, 148, 142,
+            // Yellow-green transition (depths 9-12)
+            136, 178, 220, 226,
+            // Yellow to orange (depths 13-18)
+            190, 184, 214, 208, 202, 196,
+            // Orange to red (depths 19-24)
+            202, 196, 160, 124, 88, 52,
+            // Deep red (depths 25-30)
+            88, 124, 160, 196, 196, 196
+        };
+        
+        int idx = (e.depth - 1) % 30;  // depth 1-30 maps to index 0-29
+        int color = gradient[idx];
+        std::fprintf(out, "\033[38;5;%dm", color);  // 256-color mode
     }
     
     if (get_config().print_timestamp) {

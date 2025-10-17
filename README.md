@@ -115,24 +115,30 @@ For easier visual tracking of call depths, enable ANSI color-coding:
 trace::config.colorize_depth = true;  // Enable depth-based coloring
 ```
 
-Each call depth level gets a different color from a 6-color wheel:
-- **Depth 1:** Green
-- **Depth 2:** Yellow
-- **Depth 3:** Blue
-- **Depth 4:** Magenta
-- **Depth 5:** Cyan
-- **Depth 6:** Red (then cycles back to Green)
+Each call depth level gets a different color from a smooth 30-color gradient:
+- **Depths 1-8:** Green shades (light to dark green)
+- **Depths 9-12:** Yellow-green transition
+- **Depths 13-18:** Yellow to orange transition
+- **Depths 19-24:** Orange to red transition
+- **Depths 25-30:** Deep red shades
+
+The gradient provides up to 30 distinct colors, cycling after that. Colors are chosen to be clearly visible and avoid hard-to-read combinations.
 
 **Example:**
 ```cpp
 void foo() {
-    TRACE_SCOPE();  // Depth 1 = Green
+    TRACE_SCOPE();  // Depth 1 = Light Green
     bar();
 }
 
 void bar() {
-    TRACE_SCOPE();  // Depth 2 = Yellow
+    TRACE_SCOPE();  // Depth 2 = Green
     baz();
+}
+
+void baz() {
+    TRACE_SCOPE();  // Depth 3 = Darker Green
+    // ... continues through gradient as depth increases
 }
 ```
 
