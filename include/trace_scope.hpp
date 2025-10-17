@@ -112,6 +112,9 @@ struct Config {
     // Function name rendering options
     bool include_function_name = true;  ///< Show function name in prefix (line number pairs with this)
     int  function_width = 20;           ///< Fixed width for function name column
+    
+    // Indentation visualization
+    bool show_indent_markers = true;    ///< Show visual markers for indentation levels (| for depth)
 };
 TRACE_SCOPE_VAR Config config;
 
@@ -508,7 +511,17 @@ inline void print_event(const Event& e, FILE* out) {
     }
 
     // Depth indentation after prefix
-    for (int i = 0; i < e.depth; ++i) std::fputs("  ", out);
+    if (get_config().show_indent_markers) {
+        // Show visual markers for each level
+        for (int i = 0; i < e.depth; ++i) {
+            std::fputs("| ", out);
+        }
+    } else {
+        // Plain whitespace indentation
+        for (int i = 0; i < e.depth; ++i) {
+            std::fputs("  ", out);
+        }
+    }
 
     switch (e.type) {
     case EventType::Enter:
