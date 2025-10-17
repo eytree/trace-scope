@@ -15,12 +15,27 @@ else()
     target_compile_definitions(trace_scope INTERFACE TRACE_ENABLED=0)
 endif()
 
-# Example
+# Examples
 add_executable(example_basic examples/example_basic.cpp)
 target_link_libraries(example_basic PRIVATE trace_scope)
+
+add_executable(example_dll_shared examples/example_dll_shared.cpp)
+target_link_libraries(example_dll_shared PRIVATE trace_scope)
+
+add_executable(example_custom_markers examples/example_custom_markers.cpp)
+target_link_libraries(example_custom_markers PRIVATE trace_scope)
+
+add_executable(example_colors examples/example_colors.cpp)
+target_link_libraries(example_colors PRIVATE trace_scope)
 
 # Tests
 if(BUILD_TESTS)
   add_executable(test_trace tests/test_trace.cpp)
   target_link_libraries(test_trace PRIVATE trace_scope)
+  
+  add_executable(test_comprehensive tests/test_comprehensive.cpp)
+  target_link_libraries(test_comprehensive PRIVATE trace_scope)
+  
+  add_executable(test_binary_format tests/test_binary_format.cpp)
+  target_link_libraries(test_binary_format PRIVATE trace_scope)
 endif()
