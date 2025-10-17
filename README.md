@@ -475,3 +475,80 @@ See LICENSE file.
 
 **Long delays on exit**: Disable `auto_flush_at_exit` and manually flush before returning
 
+## Roadmap
+
+### Immediate Priority (Next Release)
+
+**Hybrid Buffered + Immediate Mode**
+- Support simultaneous buffered and immediate output
+- Auto-flush ring buffer when near capacity (e.g., 90% full)
+- Prevents data loss while maintaining performance
+- Optional file rotation when buffer wraps
+
+**Use case:** Long-running processes where you want both real-time visibility and complete history without data loss.
+
+### Near-Term Features
+
+**Filtering & Selective Tracing**
+- Filter by function name patterns (regex)
+- Filter by file/path patterns
+- Filter by depth range
+- Enable/disable tracing dynamically at runtime
+- Thread-specific filtering
+
+**Example:**
+```cpp
+trace::filter::exclude_functions(".*test.*");  // Skip test functions
+trace::filter::include_files("src/core/.*");   // Only trace core files
+trace::filter::max_depth(10);                  // Limit depth
+```
+
+**Performance Metrics & Analysis**
+- Per-function call count tracking
+- Min/max/average duration statistics
+- Hotspot identification (most time spent)
+- Call frequency analysis
+- Export metrics summary (JSON/CSV)
+
+**Example:**
+```cpp
+trace::metrics::enable();
+// ... run code ...
+trace::metrics::print_summary();  // Shows top 10 slowest functions
+```
+
+### Medium-Term Goals
+
+**VS Code Extension**
+- Syntax highlighting for trace macros
+- Quick actions: "Add TRACE_SCOPE to function"
+- View trace output in integrated terminal
+- Jump to function from trace output
+- Toggle tracing on/off per file
+
+**Chrome Tracing Format Export**
+- Export to chrome://tracing JSON format
+- Timeline visualization
+- Thread swimlanes
+- Flame graph view
+
+**Statistical Post-Processing (Python tools)**
+- Call graph generation (GraphViz)
+- Performance regression detection
+- Trace diff between runs
+- Filter/query trace files
+
+### Future Considerations
+- Asynchronous I/O for immediate mode
+- Compression for binary dumps (zlib/zstd)
+- Native OS tracing integration (ETW/dtrace/perf)
+- SIMD optimizations for high-frequency tracing
+
+### Contributing
+
+Contributions welcome! If you'd like to work on any roadmap items or have other ideas:
+- Open an issue to discuss the feature
+- Tests should pass (C++ and Python)
+- Code follows existing style
+- Documentation updated for new features
+
