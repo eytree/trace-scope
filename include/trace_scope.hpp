@@ -41,6 +41,7 @@
 #include <thread>
 #include <vector>
 #include <algorithm>
+#include <sstream>
 
 // DLL export/import macros for shared state across DLL boundaries
 #ifndef TRACE_SCOPE_API
@@ -724,6 +725,49 @@ inline void trace_msgf(const char* file, int line, const char* fmt, ...) {
 #endif
 }
 
+/**
+ * @brief Stream-based logging helper for C++ iostream-style output.
+ * 
+ * RAII helper that collects stream output via operator<< and writes
+ * a trace message in the destructor. Provides a drop-in replacement
+ * for stream-based logging macros.
+ * 
+ * Use via the TRACE_LOG macro, not directly.
+ */
+struct TraceStream {
+    std::ostringstream ss;  ///< Stream buffer for collecting output
+    const char* file;       ///< Source file
+    int line;               ///< Source line
+    
+    /**
+     * @brief Construct a stream logger.
+     * @param f Source file path
+     * @param l Source line number
+     */
+    TraceStream(const char* f, int l) : file(f), line(l) {}
+    
+    /**
+     * @brief Destructor writes the collected stream to trace output.
+     */
+    ~TraceStream() {
+#if TRACE_ENABLED
+        trace_msgf(file, line, "%s", ss.str().c_str());
+#endif
+    }
+    
+    /**
+     * @brief Stream insertion operator.
+     * @tparam T Type of value to stream
+     * @param val Value to append to the stream
+     * @return Reference to this for chaining
+     */
+    template<typename T>
+    TraceStream& operator<<(const T& val) {
+        ss << val;
+        return *this;
+    }
+};
+
 } // namespace trace
 
 /**
@@ -760,3 +804,23 @@ inline void trace_msgf(const char* file, int line, const char* fmt, ...) {
  * @param ... Variable arguments for format string
  */
 #define TRACE_MSG(...) ::trace::trace_msgf(__FILE__, __LINE__, __VA_ARGS__)
+
+/**
+ * @def TRACE_LOG
+ * @brief Stream-based logging within the current scope.
+ * 
+ * Provides C++ iostream-style logging using operator<<. Drop-in replacement
+ * for stream-based logging macros. The message is associated with the
+ * current function and displayed at the current indentation depth.
+ * 
+ * Example:
+ * @code
+ * int id = 42;
+ * std::string name = "test";
+ * TRACE_LOG << "Processing item " << id << ", name=" << name;
+ * 
+ * // Drop-in replacement for:
+ * // KY_COUT("Processing item " << id << ", name=" << name);
+ * @endcode
+ */
+#define TRACE_LOG ::trace::TraceStream(__FILE__, __LINE__)

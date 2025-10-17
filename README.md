@@ -5,7 +5,8 @@ A lightweight, header-only C++ library for function-scope tracing with per-threa
 ## Features
 
 - **TRACE_SCOPE()**: Automatic enter/exit recording with depth indentation and duration
-- **TRACE_MSG(fmt, ...)**: Formatted message logging at current depth
+- **TRACE_MSG(fmt, ...)**: Printf-style formatted message logging
+- **TRACE_LOG**: Stream-based logging (C++ iostream style, drop-in for stream macros)
 - **Per-thread ring buffers**: Lock-free writes, thread-safe flushing
 - **Immediate mode**: Real-time output for long-running processes
 - **Binary dump**: Compact binary format with Python pretty-printer
@@ -18,15 +19,16 @@ A lightweight, header-only C++ library for function-scope tracing with per-threa
 ```cpp
 #include <trace_scope.hpp>
 
-void foo() {
+void foo(int id, const std::string& name) {
     TRACE_SCOPE();
-    TRACE_MSG("Processing data");
+    TRACE_LOG << "Args: id=" << id << ", name=" << name;  // Stream-based
+    TRACE_MSG("Processing data for id=%d", id);  // Printf-style
     // ... work ...
 }
 
 int main() {
     TRACE_SCOPE();
-    foo();
+    foo(42, "test");
     trace::flush_all();
     return 0;
 }
@@ -87,6 +89,48 @@ Trade-offs:
 - Slower than buffered mode (file I/O on every event)
 - Thread-safe but serialized (mutex-protected output)
 - No post-processing needed (no flush required)
+
+## Stream-Based Logging (TRACE_LOG)
+
+For C++ iostream-style logging, use `TRACE_LOG`:
+
+```cpp
+void process(int id, const std::string& name) {
+    TRACE_SCOPE();
+    TRACE_LOG << "Args: id=" << id << ", name=" << name;
+    
+    TRACE_LOG << "Processing item " << id;
+    // work...
+}
+```
+
+### Drop-In Replacement
+
+If you have existing stream-based logging macros:
+
+```cpp
+// Before:
+// KY_COUT("Value: " << x << ", Count: " << y);
+
+// After (direct replacement):
+TRACE_LOG << "Value: " << x << ", Count: " << y;
+```
+
+### Printf vs Stream Style
+
+Both styles work equally well - choose based on preference:
+
+```cpp
+// Printf-style (traditional C)
+TRACE_MSG("Processing id=%d, name=%s", id, name.c_str());
+
+// Stream-style (C++ iostream)
+TRACE_LOG << "Processing id=" << id << ", name=" << name;
+```
+
+**When to use which:**
+- **TRACE_MSG**: When you have printf format strings, simple values
+- **TRACE_LOG**: When logging complex types, custom operator<<, drop-in for existing stream code
 
 ## DLL Boundary Support (Header-Only Solution)
 

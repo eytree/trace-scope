@@ -4,7 +4,9 @@
  * 
  * Shows:
  * - Function entry/exit tracing with TRACE_SCOPE()
- * - Message logging with TRACE_MSG()
+ * - Printf-style logging with TRACE_MSG()
+ * - Stream-based logging with TRACE_LOG (drop-in for stream macros)
+ * - Logging function arguments
  * - Multi-threaded tracing
  * - Manual flushing and binary dump
  */
@@ -16,13 +18,16 @@
 
 /**
  * @brief Leaf function that performs work and logs messages.
+ * 
+ * Demonstrates both printf-style (TRACE_MSG) and stream-style (TRACE_LOG) logging.
+ * 
  * @param i Iteration index
  */
 void bar(int i) {
     TRACE_SCOPE();
-    TRACE_MSG("bar start i=%d", i);
+    TRACE_LOG << "bar start i=" << i;  // Stream-based logging
     std::this_thread::sleep_for(std::chrono::milliseconds(3));
-    TRACE_MSG("bar end i=%d", i);
+    TRACE_MSG("bar end i=%d", i);  // Printf-style logging
 }
 
 /**
@@ -50,9 +55,9 @@ int main() {
     // Create worker thread
     std::thread t1([]() {
         TRACE_SCOPE();
-        TRACE_MSG("t1 starting");
+        TRACE_LOG << "t1 starting";  // Stream-based
         foo();
-        TRACE_MSG("t1 done");
+        TRACE_LOG << "t1 done";  // Stream-based
         trace::flush_ring(trace::thread_ring());
     });
 

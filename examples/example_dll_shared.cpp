@@ -54,7 +54,7 @@ namespace {
  */
 void dll1_function() {
     TRACE_SCOPE();
-    TRACE_MSG("This would be in DLL #1");
+    TRACE_LOG << "This would be in DLL #1";  // Stream-based logging
 }
 
 /**
@@ -62,7 +62,7 @@ void dll1_function() {
  */
 void dll2_function() {
     TRACE_SCOPE();
-    TRACE_MSG("This would be in DLL #2");
+    TRACE_LOG << "This would be in DLL #2";  // Stream-based logging
     dll1_function();  // Cross-DLL call
 }
 
