@@ -67,9 +67,43 @@ trace::config.filename_width = 20;          // Fixed width for filename column
 trace::config.line_width = 5;               // Fixed width for line numbers
 trace::config.function_width = 20;          // Fixed width for function names
 
+// Visual markers (customize appearance)
+trace::config.show_indent_markers = true;   // Show indent markers (default: true)
+trace::config.indent_marker = "| ";         // Indent marker (default: "| ")
+trace::config.enter_marker = "-> ";         // Function entry marker (default: "-> ")
+trace::config.exit_marker = "<- ";          // Function exit marker (default: "<- ")
+trace::config.msg_marker = "- ";            // Message marker (default: "- ")
+
 // Advanced options
 trace::config.immediate_mode = false;       // Real-time output (default: false, opt-in)
 trace::config.auto_flush_at_exit = false;   // Auto-flush on scope exit (default: false, opt-in)
+```
+
+### Customizing Visual Markers
+
+You can customize the appearance of trace output with Unicode or ASCII markers:
+
+```cpp
+// Unicode style (fancy)
+trace::config.indent_marker = "│ ";
+trace::config.enter_marker = "↘ ";
+trace::config.exit_marker = "↖ ";
+trace::config.msg_marker = "• ";
+
+// Box-drawing style
+trace::config.indent_marker = "├─";
+trace::config.enter_marker = "┌ ";
+trace::config.exit_marker = "└ ";
+trace::config.msg_marker = "│ ";
+
+// Minimal ASCII
+trace::config.indent_marker = "  ";
+trace::config.enter_marker = "> ";
+trace::config.exit_marker = "< ";
+trace::config.msg_marker = ". ";
+
+// No markers
+trace::config.show_indent_markers = false;  // Use plain whitespace
 ```
 
 ## Immediate Mode
@@ -269,8 +303,9 @@ Durations automatically scale for readability:
 ## Examples
 
 See `examples/` directory:
-- `example_basic.cpp`: Basic usage with multi-threaded tracing
+- `example_basic.cpp`: Basic usage with multi-threaded tracing and stream logging
 - `example_dll_shared.cpp`: Header-only DLL state sharing demonstration
+- `example_custom_markers.cpp`: Customizing visual markers (ASCII, Unicode, box-drawing)
 - `src/trace_scope_impl.cpp`: Advanced DLL compilation-based sharing template
 
 See `tests/` directory:

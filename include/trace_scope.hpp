@@ -114,8 +114,12 @@ struct Config {
     bool include_function_name = true;  ///< Show function name in prefix (line number pairs with this)
     int  function_width = 20;           ///< Fixed width for function name column
     
-    // Indentation visualization
-    bool show_indent_markers = true;    ///< Show visual markers for indentation levels (| for depth)
+    // Indentation and marker visualization
+    bool show_indent_markers = true;    ///< Show visual markers for indentation levels
+    const char* indent_marker = "| ";   ///< Marker for each indentation level (e.g., "| ", "  ", "│ ")
+    const char* enter_marker = "-> ";   ///< Marker for function entry (e.g., "-> ", "↘ ", "► ")
+    const char* exit_marker = "<- ";    ///< Marker for function exit (e.g., "<- ", "↖ ", "◄ ")
+    const char* msg_marker = "- ";      ///< Marker for message events (e.g., "- ", "• ", "* ")
 };
 TRACE_SCOPE_VAR Config config;
 
@@ -514,8 +518,9 @@ inline void print_event(const Event& e, FILE* out) {
     // Depth indentation after prefix
     if (get_config().show_indent_markers) {
         // Show visual markers for each level
+        const char* marker = get_config().indent_marker ? get_config().indent_marker : "| ";
         for (int i = 0; i < e.depth; ++i) {
-            std::fputs("| ", out);
+            std::fputs(marker, out);
         }
     } else {
         // Plain whitespace indentation
@@ -524,28 +529,33 @@ inline void print_event(const Event& e, FILE* out) {
         }
     }
 
+    // Event type markers
+    const char* enter_mk = get_config().enter_marker ? get_config().enter_marker : "-> ";
+    const char* exit_mk = get_config().exit_marker ? get_config().exit_marker : "<- ";
+    const char* msg_mk = get_config().msg_marker ? get_config().msg_marker : "- ";
+
     switch (e.type) {
     case EventType::Enter:
-        std::fprintf(out, "-> %s\n", e.func);
+        std::fprintf(out, "%s%s\n", enter_mk, e.func);
         break;
     case EventType::Exit:
         if (get_config().print_timing) {
             // Auto-scale units based on duration
             if (e.dur_ns < 1000ULL) {
-                std::fprintf(out, "<- %s  [%llu ns]\n", e.func, (unsigned long long)e.dur_ns);
+                std::fprintf(out, "%s%s  [%llu ns]\n", exit_mk, e.func, (unsigned long long)e.dur_ns);
             } else if (e.dur_ns < 1000000ULL) {
-                std::fprintf(out, "<- %s  [%.2f us]\n", e.func, e.dur_ns / 1000.0);
+                std::fprintf(out, "%s%s  [%.2f us]\n", exit_mk, e.func, e.dur_ns / 1000.0);
             } else if (e.dur_ns < 1000000000ULL) {
-                std::fprintf(out, "<- %s  [%.2f ms]\n", e.func, e.dur_ns / 1000000.0);
+                std::fprintf(out, "%s%s  [%.2f ms]\n", exit_mk, e.func, e.dur_ns / 1000000.0);
             } else {
-                std::fprintf(out, "<- %s  [%.3f s]\n", e.func, e.dur_ns / 1000000000.0);
+                std::fprintf(out, "%s%s  [%.3f s]\n", exit_mk, e.func, e.dur_ns / 1000000000.0);
             }
         } else {
-            std::fprintf(out, "<- %s\n", e.func);
+            std::fprintf(out, "%s%s\n", exit_mk, e.func);
         }
         break;
     case EventType::Msg:
-        std::fprintf(out, "- %s\n", e.msg[0] ? e.msg : "");
+        std::fprintf(out, "%s%s\n", msg_mk, e.msg[0] ? e.msg : "");
         break;
     }
 }
