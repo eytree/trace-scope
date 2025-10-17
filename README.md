@@ -36,9 +36,9 @@ Output:
 ```
 example.cpp:   8 foo                  -> foo
 example.cpp:   9 foo                  - Processing data
-example.cpp:   8 foo                  <- foo  [123.45 µs]
+example.cpp:   8 foo                  <- foo  [123.45 us]
 example.cpp:  13 main                 -> main
-example.cpp:  14 main                 <- main  [234.56 µs]
+example.cpp:  14 main                 <- main  [234.56 us]
 ```
 
 ## Configuration
@@ -152,8 +152,8 @@ Control buffer sizes at compile time:
 ## Auto-Scaling Duration Units
 
 Durations automatically scale for readability:
-- `< 1 µs`: nanoseconds (e.g., `[123 ns]`)
-- `< 1 ms`: microseconds (e.g., `[45.67 µs]`)
+- `< 1 us`: nanoseconds (e.g., `[123 ns]`)
+- `< 1 ms`: microseconds (e.g., `[45.67 us]`)
 - `< 1 s`: milliseconds (e.g., `[123.45 ms]`)
 - `≥ 1 s`: seconds (e.g., `[2.345 s]`)
 

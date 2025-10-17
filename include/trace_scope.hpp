@@ -360,7 +360,7 @@ inline void print_event(const Event& e, FILE* out) {
             if (e.dur_ns < 1000ULL) {
                 std::fprintf(out, "<- %s  [%llu ns]\n", e.func, (unsigned long long)e.dur_ns);
             } else if (e.dur_ns < 1000000ULL) {
-                std::fprintf(out, "<- %s  [%.2f µs]\n", e.func, e.dur_ns / 1000.0);
+                std::fprintf(out, "<- %s  [%.2f us]\n", e.func, e.dur_ns / 1000.0);
             } else if (e.dur_ns < 1000000000ULL) {
                 std::fprintf(out, "<- %s  [%.2f ms]\n", e.func, e.dur_ns / 1000000.0);
             } else {
