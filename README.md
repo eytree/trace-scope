@@ -185,15 +185,57 @@ This approach requires modifying your build system but avoids the runtime setup 
 
 ## Binary Dump Format
 
-For compact storage and analysis:
+For compact storage and post-processing:
 
 ```cpp
 trace::dump_binary("trace.bin");
 ```
 
-Pretty-print with included Python tool:
+### Python Pretty-Printer
+
+The included `tools/trc_pretty.py` tool parses and displays binary trace files:
+
 ```bash
 python tools/trc_pretty.py trace.bin
+```
+
+**Features:**
+- Parses TRCLOG10 binary format
+- Auto-scaling duration units (ns/us/ms/s)
+- Visual indent markers (`|`) for call depth
+- Timestamps and thread IDs
+- Full file paths and line numbers
+
+**Output format:**
+```
+[timestamp] (thread_id) | | -> function_name (file:line)
+[timestamp] (thread_id) | | | - message text (file:line)
+[timestamp] (thread_id) | | <- function_name  [duration] (file:line)
+```
+
+**Binary Format Validation:**
+
+The `test_binary_format` test ensures the Python parser stays synchronized with the C++ binary format:
+
+```bash
+# From build directory:
+./test_binary_format
+
+# This test:
+# 1. Generates trace events
+# 2. Dumps to binary file
+# 3. Runs Python parser automatically
+# 4. Verifies successful parsing
+```
+
+If the binary format changes in the C++ code, this test will fail, alerting you to update the Python parser.
+
+**Binary format specification (TRCLOG10 v1):**
+```
+Header:    "TRCLOG10" (8 bytes) + version(4) + padding(4)
+Per event: type(1) + tid(4) + ts_ns(8) + depth(4) + dur_ns(8) +
+           file_len(2) + file_str + func_len(2) + func_str +
+           msg_len(2) + msg_str + line(4)
 ```
 
 ## Build-Time Configuration
@@ -234,6 +276,7 @@ See `examples/` directory:
 See `tests/` directory:
 - `test_trace.cpp`: Basic functionality tests
 - `test_comprehensive.cpp`: Extensive test suite covering all features
+- `test_binary_format.cpp`: Binary format and Python parser validation
 
 ## Building
 
