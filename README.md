@@ -315,6 +315,52 @@ Per event: type(1) + tid(4) + ts_ns(8) + depth(4) + dur_ns(8) +
            msg_len(2) + msg_str + line(4)
 ```
 
+### Automatic Instrumentation Tool
+
+The `tools/trace_instrument.py` utility automatically adds or removes `TRACE_SCOPE()` macros from C++ files:
+
+**Add TRACE_SCOPE() to all functions:**
+```bash
+python tools/trace_instrument.py add myfile.cpp
+```
+
+**Remove all TRACE_SCOPE() calls:**
+```bash
+python tools/trace_instrument.py remove myfile.cpp
+```
+
+**Process multiple files:**
+```bash
+python tools/trace_instrument.py add src/*.cpp
+```
+
+**Features:**
+- Automatically detects function definitions (free functions, methods, constructors)
+- Preserves correct indentation
+- Creates `.bak` backup files before modifying
+- Skips functions that already have TRACE_SCOPE()
+- Handles namespaces, classes, and templates (most cases)
+
+**Example:**
+```cpp
+// Before:
+void my_function(int x) {
+    std::cout << "Processing " << x << std::endl;
+}
+
+// After running: python tools/trace_instrument.py add file.cpp
+void my_function(int x) {
+    TRACE_SCOPE();
+    std::cout << "Processing " << x << std::endl;
+}
+```
+
+**Notes:**
+- Uses regex-based parsing (simple but effective)
+- May need manual adjustment for very complex template or macro code
+- Always creates backups for safety
+- Review changes before committing instrumented code
+
 ## Build-Time Configuration
 
 Control buffer sizes at compile time:
@@ -356,6 +402,21 @@ See `tests/` directory:
 - `test_trace.cpp`: Basic functionality tests
 - `test_comprehensive.cpp`: Extensive test suite covering all features
 - `test_binary_format.cpp`: Binary format and Python parser validation
+
+## Tools
+
+See `tools/` directory:
+
+**`trc_pretty.py`** - Binary trace file pretty-printer
+- Parses and displays TRCLOG10 binary dumps
+- Usage: `python tools/trc_pretty.py trace.bin`
+- See "Binary Dump Format" section for details
+
+**`trace_instrument.py`** - Automatic code instrumentation
+- Adds/removes TRACE_SCOPE() from C++ files
+- Usage: `python tools/trace_instrument.py add file.cpp`
+- Usage: `python tools/trace_instrument.py remove file.cpp`
+- See "Automatic Instrumentation Tool" section for details
 
 ## Building
 
