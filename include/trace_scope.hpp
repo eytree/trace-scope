@@ -86,56 +86,91 @@
 
 namespace trace {
 
+/**
+ * @brief Global configuration for trace output formatting and behavior.
+ * 
+ * All settings can be modified at runtime before tracing begins.
+ * Config changes during tracing are not thread-safe.
+ */
 struct Config {
-    FILE* out = stdout;
-    bool print_timing = true;
-    bool print_timestamp = false;     // show timestamp (opt-in)
-    bool print_thread = true;
-    bool auto_flush_at_exit = false;  // automatically flush at program exit (opt-in)
-    bool immediate_mode = false;      // bypass ring buffer, print immediately (opt-in, for long-running processes)
+    FILE* out = stdout;               ///< Output file stream (default: stdout)
+    bool print_timing = true;         ///< Show function durations with auto-scaled units
+    bool print_timestamp = false;     ///< Show ISO timestamps [YYYY-MM-DD HH:MM:SS.mmm] (opt-in)
+    bool print_thread = true;         ///< Show thread ID in hex format
+    bool auto_flush_at_exit = false;  ///< Automatically flush when outermost scope exits (opt-in)
+    bool immediate_mode = false;      ///< Bypass ring buffer, print immediately (opt-in, for long-running processes)
 
-    // When true we include filename:line in the left prefix
-    bool include_file_line = true;
+    // Prefix content control
+    bool include_file_line = true;    ///< Include filename:line in prefix block
 
-    // NEW: filename rendering options
-    bool include_filename = true;     // show filename in prefix
-    bool show_full_path = false;      // default OFF -> show only basename
-    int  filename_width = 20;         // fixed width for filename column
-    int  line_width     = 5;          // fixed width for line number
+    // Filename rendering options
+    bool include_filename = true;     ///< Show filename in prefix
+    bool show_full_path = false;      ///< Show full path vs basename only
+    int  filename_width = 20;         ///< Fixed width for filename column
+    int  line_width     = 5;          ///< Fixed width for line number
     
-    // NEW: function name rendering options
-    bool include_function_name = true;  // show function name in prefix (line number pairs with this)
-    int  function_width = 20;           // fixed width for function name column
+    // Function name rendering options
+    bool include_function_name = true;  ///< Show function name in prefix (line number pairs with this)
+    int  function_width = 20;           ///< Fixed width for function name column
 };
 TRACE_SCOPE_VAR Config config;
 
-enum class EventType : uint8_t { Enter = 0, Exit = 1, Msg = 2 };
+/** @brief Type of trace event */
+enum class EventType : uint8_t { 
+    Enter = 0,  ///< Function entry
+    Exit = 1,   ///< Function exit
+    Msg = 2     ///< Message/log event
+};
 
+/**
+ * @brief A single trace event stored in the ring buffer.
+ * 
+ * Events are created for function entry/exit (via TRACE_SCOPE) and
+ * for log messages (via TRACE_MSG).
+ */
 struct Event {
-    uint64_t   ts_ns;                  ///< System clock ns (wall-clock time)
-    const char* func;                  ///< Function name (enter/exit; null for msg)
-    const char* file;                  ///< Source file (for all events)
-    int         line;                  ///< Source line (for all events)
-    int         depth;                 ///< Indentation depth at event
-    uint32_t    tid;                   ///< Thread id (hashed printable)
-    EventType   type;                  ///< Enter / Exit / Msg
-    uint64_t    dur_ns;                ///< Exit duration; 0 otherwise
-    char        msg[TRACE_MSG_CAP + 1];///< Msg payload if type==Msg, else ""
+    uint64_t    ts_ns;                  ///< Timestamp in nanoseconds (system clock, wall-clock time)
+    const char* func;                   ///< Function name (for enter/exit; null for msg)
+    const char* file;                   ///< Source file path
+    int         line;                   ///< Source line number
+    int         depth;                  ///< Call stack depth (for indentation)
+    uint32_t    tid;                    ///< Thread ID (hashed to 32-bit for display)
+    EventType   type;                   ///< Event type (Enter/Exit/Msg)
+    uint64_t    dur_ns;                 ///< Duration in nanoseconds (Exit only; 0 otherwise)
+    char        msg[TRACE_MSG_CAP + 1]; ///< Message text (Msg events only; empty otherwise)
 };
 
 // Forward declaration for immediate mode
 inline void print_event(const Event& e, FILE* out);
 
+/**
+ * @brief Per-thread ring buffer for trace events.
+ * 
+ * Each thread gets its own Ring (thread_local storage). Events are written
+ * lock-free to the ring buffer. When the buffer fills, oldest events are
+ * overwritten (wraps counter increments).
+ */
 struct Ring {
-    Event     buf[TRACE_RING_CAP];
-    uint32_t  head = 0;
-    uint64_t  wraps = 0;
-    int       depth = 0;
-    uint32_t  tid   = 0;
-    bool      registered = false;
-    uint64_t  start_stack[TRACE_DEPTH_MAX]; // start time per depth for durations
-    const char* func_stack[TRACE_DEPTH_MAX]; // function name per depth for messages
+    Event       buf[TRACE_RING_CAP];                ///< Circular buffer of events
+    uint32_t    head = 0;                           ///< Next write position
+    uint64_t    wraps = 0;                          ///< Number of buffer wraparounds
+    int         depth = 0;                          ///< Current call stack depth
+    uint32_t    tid   = 0;                          ///< Thread ID (cached)
+    bool        registered = false;                 ///< Whether this ring is registered globally
+    uint64_t    start_stack[TRACE_DEPTH_MAX];       ///< Start timestamp per depth (for duration calculation)
+    const char* func_stack[TRACE_DEPTH_MAX];        ///< Function name per depth (for message context)
 
+    /**
+     * @brief Write a trace event (Enter/Exit/Msg).
+     * 
+     * In immediate mode, prints directly. In buffered mode, writes to ring buffer.
+     * Maintains call stack depth and tracks start times for duration calculation.
+     * 
+     * @param type Event type (Enter/Exit/Msg)
+     * @param func Function name (null for Msg)
+     * @param file Source file path
+     * @param line Source line number
+     */
     inline void write(EventType type, const char* func, const char* file, int line) {
         const auto now = std::chrono::system_clock::now().time_since_epoch();
         uint64_t now_ns = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
@@ -185,6 +220,18 @@ struct Ring {
         }
     }
 
+    /**
+     * @brief Write a formatted message event.
+     * 
+     * Retrieves current function context from the function stack and
+     * formats the message using vsnprintf. In immediate mode, prints directly.
+     * In buffered mode, writes to ring buffer.
+     * 
+     * @param file Source file path
+     * @param line Source line number
+     * @param fmt Printf-style format string
+     * @param ap Variable argument list
+     */
     inline void write_msg(const char* file, int line, const char* fmt, va_list ap) {
         // Get current function name from the stack (depth is at current scope)
         const char* current_func = nullptr;
@@ -232,10 +279,20 @@ struct Ring {
     }
 };
 
+/**
+ * @brief Global registry of all thread-local ring buffers.
+ * 
+ * Tracks all active ring buffers for flush_all() operations.
+ * Thread-safe access via mutex.
+ */
 struct Registry {
-    std::mutex mtx;
-    std::vector<Ring*> rings;
+    std::mutex mtx;                 ///< Protects rings vector
+    std::vector<Ring*> rings;       ///< Pointers to all registered ring buffers
 
+    /**
+     * @brief Register a new ring buffer.
+     * @param r Pointer to ring buffer (must remain valid)
+     */
     inline void add(Ring* r) {
         std::lock_guard<std::mutex> lock(mtx);
         rings.push_back(r);
@@ -246,6 +303,10 @@ struct Registry {
 // For DLL sharing: use extern/exported variable
 TRACE_SCOPE_API Registry& registry();
 #if defined(TRACE_SCOPE_IMPLEMENTATION)
+/**
+ * @brief Get the global registry instance (DLL-shared version).
+ * @return Reference to the singleton Registry
+ */
 Registry& registry() {
     static Registry r;
     return r;
@@ -253,12 +314,24 @@ Registry& registry() {
 #endif
 #else
 // For header-only: inline function with static local
+/**
+ * @brief Get the global registry instance (header-only version).
+ * @return Reference to the singleton Registry
+ */
 inline Registry& registry() {
     static Registry r;
     return r;
 }
 #endif
 
+/**
+ * @brief Hash the current thread ID to a printable 32-bit value.
+ * 
+ * Uses a mixing function similar to MurmurHash3 to ensure good distribution
+ * of thread IDs for display purposes.
+ * 
+ * @return 32-bit hash of the current thread ID
+ */
 inline uint32_t thread_id_hash() {
     auto id = std::this_thread::get_id();
     std::hash<std::thread::id> h;
@@ -270,6 +343,14 @@ inline uint32_t thread_id_hash() {
     return (uint32_t)(v & 0xffffffffu);
 }
 
+/**
+ * @brief Get the current thread's ring buffer.
+ * 
+ * Each thread gets its own ring buffer (thread_local storage). On first call,
+ * initializes the ring and registers it with the global registry.
+ * 
+ * @return Reference to the current thread's Ring
+ */
 inline Ring& thread_ring() {
     static thread_local Ring ring;
     static thread_local bool inited = false;
@@ -282,7 +363,14 @@ inline Ring& thread_ring() {
     return ring;
 }
 
-// Helper: get basename from a path (handles '/' and '\')
+/**
+ * @brief Extract the basename from a file path.
+ * 
+ * Handles both Unix (/) and Windows (\) path separators.
+ * 
+ * @param p File path (can be null)
+ * @return Pointer to the basename, or empty string if null
+ */
 inline const char* base_name(const char* p) {
     if (!p) return "";
     const char* s1 = std::strrchr(p, '/');
@@ -291,6 +379,16 @@ inline const char* base_name(const char* p) {
     return s ? (s + 1) : p;
 }
 
+/**
+ * @brief Print a single trace event to a file stream.
+ * 
+ * Formats the event according to the global config settings, including
+ * optional timestamp, thread ID, file/line/function prefix, indentation,
+ * and auto-scaled duration units.
+ * 
+ * @param e The event to print
+ * @param out Output file stream
+ */
 inline void print_event(const Event& e, FILE* out) {
     if (config.print_timestamp) {
         // Convert ns timestamp to human-readable ISO format with milliseconds
@@ -376,6 +474,15 @@ inline void print_event(const Event& e, FILE* out) {
     }
 }
 
+/**
+ * @brief Flush a single ring buffer to the output stream.
+ * 
+ * Prints all events in the ring buffer (handling wraparound). Thread-safe
+ * via static mutex. If the ring has wrapped, only the most recent
+ * TRACE_RING_CAP events are printed.
+ * 
+ * @param r The ring buffer to flush
+ */
 inline void flush_ring(const Ring& r) {
     static std::mutex io_mtx;
     std::lock_guard<std::mutex> guard(io_mtx);
@@ -392,19 +499,44 @@ inline void flush_ring(const Ring& r) {
     std::fflush(out);
 }
 
+/**
+ * @brief Flush all registered ring buffers to the output stream.
+ * 
+ * Thread-safe. Takes a snapshot of all registered rings and flushes each one.
+ * Call this manually or enable config.auto_flush_at_exit for automatic flushing.
+ */
 inline void flush_all() {
     std::vector<Ring*> snapshot;
     { std::lock_guard<std::mutex> lock(registry().mtx); snapshot = registry().rings; }
     for (Ring* r : snapshot) if (r && r->registered) flush_ring(*r);
 }
 
-// Auto-flush when outermost scope exits (typically main)
+/**
+ * @brief Auto-flush when outermost scope exits.
+ * 
+ * Called by Scope destructor. If config.auto_flush_at_exit is true and
+ * we're returning to depth 0, flushes all traces.
+ * 
+ * @param final_depth The depth after the scope exits
+ */
 inline void check_auto_flush_on_scope_exit(int final_depth) {
     if (config.auto_flush_at_exit && final_depth == 0) {
         flush_all();
     }
 }
 
+/**
+ * @brief Dump all trace events to a compact binary file.
+ * 
+ * Binary format starts with "TRCLOG10" header followed by version info.
+ * Each event is serialized with its type, thread ID, timestamp, depth,
+ * duration, and length-prefixed strings (file, func, msg).
+ * 
+ * Use tools/trc_pretty.py to pretty-print the binary file.
+ * 
+ * @param path Output file path
+ * @return true on success, false on failure
+ */
 inline bool dump_binary(const char* path) {
     FILE* f = std::fopen(path, "wb");
     if (!f) return false;
@@ -453,15 +585,37 @@ inline bool dump_binary(const char* path) {
     return true;
 }
 
+/**
+ * @brief RAII scope guard for automatic function entry/exit tracing.
+ * 
+ * Constructor writes an Enter event, destructor writes an Exit event.
+ * The destructor calculates duration and optionally triggers auto-flush
+ * when returning to depth 0.
+ * 
+ * Use via the TRACE_SCOPE() macro, not directly.
+ */
 struct Scope {
-    const char* func;
-    const char* file;
-    int         line;
+    const char* func;  ///< Function name
+    const char* file;  ///< Source file
+    int         line;  ///< Source line
+    
+    /**
+     * @brief Construct a scope guard and write Enter event.
+     * @param f Function name
+     * @param fi Source file
+     * @param li Source line
+     */
     inline Scope(const char* f, const char* fi, int li) : func(f), file(fi), line(li) {
 #if TRACE_ENABLED
         thread_ring().write(EventType::Enter, func, file, line);
 #endif
     }
+    /**
+     * @brief Destruct the scope guard and write Exit event.
+     * 
+     * Writes Exit event with calculated duration. If auto_flush_at_exit
+     * is enabled and we're returning to depth 0, triggers flush_all().
+     */
     inline ~Scope() {
 #if TRACE_ENABLED
         Ring& r = thread_ring();
@@ -472,6 +626,19 @@ struct Scope {
     }
 };
 
+/**
+ * @brief Write a formatted trace message.
+ * 
+ * Creates a message event with printf-style formatting. The message is
+ * associated with the current function (from the function stack).
+ * 
+ * Use via the TRACE_MSG() macro, not directly.
+ * 
+ * @param file Source file path
+ * @param line Source line number
+ * @param fmt Printf-style format string
+ * @param ... Variable arguments for format string
+ */
 inline void trace_msgf(const char* file, int line, const char* fmt, ...) {
 #if TRACE_ENABLED
     Ring& r = thread_ring();
@@ -484,5 +651,37 @@ inline void trace_msgf(const char* file, int line, const char* fmt, ...) {
 
 } // namespace trace
 
+/**
+ * @def TRACE_SCOPE()
+ * @brief Trace the current function scope.
+ * 
+ * Creates an RAII scope guard that logs function entry immediately and
+ * function exit (with duration) when the scope ends. Automatically handles
+ * nesting depth for proper indentation.
+ * 
+ * Example:
+ * @code
+ * void my_function() {
+ *     TRACE_SCOPE();  // Logs entry and exit automatically
+ *     // ... function body ...
+ * }
+ * @endcode
+ */
 #define TRACE_SCOPE() ::trace::Scope _trace_scope_obj(__func__, __FILE__, __LINE__)
+
+/**
+ * @def TRACE_MSG(fmt, ...)
+ * @brief Log a formatted message within the current scope.
+ * 
+ * Uses printf-style format strings. The message is associated with the
+ * current function and displayed at the current indentation depth.
+ * 
+ * Example:
+ * @code
+ * TRACE_MSG("Processing item %d of %d", current, total);
+ * @endcode
+ * 
+ * @param fmt Printf-style format string
+ * @param ... Variable arguments for format string
+ */
 #define TRACE_MSG(...) ::trace::trace_msgf(__FILE__, __LINE__, __VA_ARGS__)
