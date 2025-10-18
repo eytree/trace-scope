@@ -8,7 +8,7 @@
  * Best viewed in a terminal that supports ANSI 256-color mode.
  */
 
-#include "../include/trace_scope.hpp"
+#include <trace-scope/trace_scope.hpp>
 #include <cstdio>
 
 void level10() {

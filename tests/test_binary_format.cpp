@@ -11,7 +11,7 @@
  * Purpose: Ensures C++ binary format and Python parser stay in sync.
  */
 
-#include "../include/trace_scope.hpp"
+#include <trace-scope/trace_scope.hpp>
 #include <cstdio>
 #include <cstdlib>
 #include <cassert>

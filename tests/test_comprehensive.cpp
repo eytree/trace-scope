@@ -1,4 +1,4 @@
-#include "../include/trace_scope.hpp"
+#include <trace-scope/trace_scope.hpp>
 #include <thread>
 #include <chrono>
 #include <cassert>

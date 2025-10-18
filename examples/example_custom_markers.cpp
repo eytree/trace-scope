@@ -6,7 +6,7 @@
  * with different styles (ASCII, Unicode, box-drawing).
  */
 
-#include "../include/trace_scope.hpp"
+#include <trace-scope/trace_scope.hpp>
 #include <cstdio>
 
 void inner_function() {

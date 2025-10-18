@@ -100,6 +100,11 @@ struct Config {
     bool print_thread = true;         ///< Show thread ID in hex format
     bool auto_flush_at_exit = false;  ///< Automatically flush when outermost scope exits (opt-in)
     bool immediate_mode = false;      ///< Bypass ring buffer, print immediately (opt-in, for long-running processes)
+    
+    // Hybrid mode (buffered + immediate simultaneously)
+    bool hybrid_mode = false;         ///< Enable hybrid mode: buffer AND print immediately (opt-in)
+    FILE* immediate_out = nullptr;    ///< Separate output stream for immediate output in hybrid mode (nullptr = use 'out')
+    float auto_flush_threshold = 0.9f; ///< Auto-flush when buffer reaches this fraction full (0.0-1.0, default 0.9 = 90%)
 
     // Prefix content control
     bool include_file_line = true;    ///< Include filename:line in prefix block
@@ -129,6 +134,7 @@ TRACE_SCOPE_VAR Config config;
 // Forward declarations for external state system
 struct Registry;
 inline Config& get_config();
+inline void flush_current_thread();
 
 // External state pointers for DLL-safe cross-boundary tracing (header-only solution)
 // When set, these override the default inline instances
@@ -181,6 +187,27 @@ struct Ring {
     const char* func_stack[TRACE_DEPTH_MAX];        ///< Function name per depth (for message context)
 
     /**
+     * @brief Check if ring buffer should be auto-flushed (hybrid mode).
+     * 
+     * Returns true if hybrid mode is enabled and buffer usage exceeds
+     * the configured threshold.
+     * 
+     * @return true if buffer should be flushed
+     */
+    inline bool should_auto_flush() const {
+        if (!get_config().hybrid_mode) {
+            return false;
+        }
+        
+        float usage = (float)head / (float)TRACE_RING_CAP;
+        if (wraps > 0) {
+            usage = 1.0f;  // Already wrapped = 100% full
+        }
+        
+        return usage >= get_config().auto_flush_threshold;
+    }
+
+    /**
      * @brief Write a trace event (Enter/Exit/Msg).
      * 
      * In immediate mode, prints directly. In buffered mode, writes to ring buffer.
@@ -225,18 +252,50 @@ struct Ring {
             e.depth = depth;
         }
 
-        // Immediate mode: print directly instead of buffering
-        if (get_config().immediate_mode) {
+        // Hybrid mode: buffer AND print immediately, with auto-flush
+        if (get_config().hybrid_mode) {
+            // Write to ring buffer first
+            buf[head] = e;
+            head = (head + 1) % TRACE_RING_CAP;
+            if (head == 0) {
+                ++wraps;
+            }
+            
+            // Check if we need to auto-flush BEFORE acquiring lock
+            bool needs_flush = should_auto_flush();
+            
+            // Also print immediately for real-time visibility
+            {
+                static std::mutex io_mtx;
+                std::lock_guard<std::mutex> lock(io_mtx);
+                FILE* imm_out = get_config().immediate_out;
+                if (!imm_out) {
+                    imm_out = get_config().out ? get_config().out : stdout;
+                }
+                print_event(e, imm_out);
+                std::fflush(imm_out);
+            }
+            
+            // Auto-flush if buffer is near capacity (outside lock to avoid deadlock)
+            if (needs_flush) {
+                flush_current_thread();
+            }
+        }
+        // Immediate mode: print directly without buffering
+        else if (get_config().immediate_mode) {
             static std::mutex io_mtx;
             std::lock_guard<std::mutex> lock(io_mtx);
             FILE* out = get_config().out ? get_config().out : stdout;
             print_event(e, out);
             std::fflush(out);
-        } else {
-            // Buffered mode: write to ring buffer
+        }
+        // Buffered mode: write to ring buffer only
+        else {
             buf[head] = e;
             head = (head + 1) % TRACE_RING_CAP;
-            if (head == 0) ++wraps;
+            if (head == 0) {
+                ++wraps;
+            }
         }
     }
 
@@ -260,8 +319,30 @@ struct Ring {
             current_func = func_stack[d];
         }
         
-        if (get_config().immediate_mode) {
-            // Immediate mode: format and print directly
+        // Hybrid mode: buffer AND print immediately
+        if (get_config().hybrid_mode) {
+            // Write to buffer first (via write())
+            write(EventType::Msg, current_func, file, line);
+            Event& e = buf[(head + TRACE_RING_CAP - 1) % TRACE_RING_CAP];
+            
+            // Format the message
+            if (!fmt) {
+                e.msg[0] = 0;
+            }
+            else {
+                int n = std::vsnprintf(e.msg, TRACE_MSG_CAP, fmt, ap);
+                if (n < 0) {
+                    e.msg[0] = 0;
+                }
+                else {
+                    e.msg[std::min(n, TRACE_MSG_CAP)] = 0;
+                }
+            }
+            
+            // Note: write() already handles immediate output and auto-flush for hybrid mode
+        }
+        // Immediate mode: format and print directly
+        else if (get_config().immediate_mode) {
             const auto now = std::chrono::system_clock::now().time_since_epoch();
             uint64_t now_ns = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
             
@@ -275,11 +356,17 @@ struct Ring {
             e.depth = depth;
             e.dur_ns = 0;
             
-            if (!fmt) { e.msg[0] = 0; } 
+            if (!fmt) {
+                e.msg[0] = 0;
+            }
             else {
                 int n = std::vsnprintf(e.msg, TRACE_MSG_CAP, fmt, ap);
-                if (n < 0) e.msg[0] = 0;
-                else e.msg[std::min(n, TRACE_MSG_CAP)] = 0;
+                if (n < 0) {
+                    e.msg[0] = 0;
+                }
+                else {
+                    e.msg[std::min(n, TRACE_MSG_CAP)] = 0;
+                }
             }
             
             static std::mutex io_mtx;
@@ -287,14 +374,24 @@ struct Ring {
             FILE* out = get_config().out ? get_config().out : stdout;
             print_event(e, out);
             std::fflush(out);
-        } else {
-            // Buffered mode: write to ring buffer
+        }
+        // Buffered mode: write to ring buffer only
+        else {
             write(EventType::Msg, current_func, file, line);
             Event& e = buf[(head + TRACE_RING_CAP - 1) % TRACE_RING_CAP];
-            if (!fmt) { e.msg[0] = 0; return; }
+            
+            if (!fmt) {
+                e.msg[0] = 0;
+                return;
+            }
+            
             int n = std::vsnprintf(e.msg, TRACE_MSG_CAP, fmt, ap);
-            if (n < 0) e.msg[0] = 0;
-            else e.msg[std::min(n, TRACE_MSG_CAP)] = 0;
+            if (n < 0) {
+                e.msg[0] = 0;
+            }
+            else {
+                e.msg[std::min(n, TRACE_MSG_CAP)] = 0;
+            }
         }
     }
 };
@@ -624,8 +721,25 @@ inline void flush_ring(const Ring& r) {
  */
 inline void flush_all() {
     std::vector<Ring*> snapshot;
-    { std::lock_guard<std::mutex> lock(registry().mtx); snapshot = registry().rings; }
-    for (Ring* r : snapshot) if (r && r->registered) flush_ring(*r);
+    { 
+        std::lock_guard<std::mutex> lock(registry().mtx); 
+        snapshot = registry().rings; 
+    }
+    for (Ring* r : snapshot) {
+        if (r && r->registered) {
+            flush_ring(*r);
+        }
+    }
+}
+
+/**
+ * @brief Flush only the current thread's ring buffer.
+ * 
+ * Used by hybrid mode for auto-flushing when buffer approaches capacity.
+ * Only flushes the calling thread's buffer, not all threads.
+ */
+inline void flush_current_thread() {
+    flush_ring(thread_ring());
 }
 
 /**
