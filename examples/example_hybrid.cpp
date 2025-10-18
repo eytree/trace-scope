@@ -59,8 +59,10 @@ int main() {
     trace::config.hybrid_mode = true;
     trace::config.auto_flush_threshold = 0.8f;  // Flush at 80% full
     
-    // Optional: separate immediate output from buffered output
-    // trace::config.immediate_out = std::fopen("hybrid_immediate.log", "w");
+    // Real-time output goes to console (immediate visibility)
+    trace::config.immediate_out = stdout;
+    
+    // Buffered output saved to file (complete history for post-processing)
     trace::config.out = std::fopen("hybrid_buffered.log", "w");
     
     std::printf("Starting simulation with %d items across 3 threads...\n", 30);
