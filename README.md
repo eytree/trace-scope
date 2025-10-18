@@ -78,7 +78,43 @@ trace::config.colorize_depth = false;       // ANSI color by depth (default: fal
 // Advanced options
 trace::config.immediate_mode = false;       // Real-time output (default: false, opt-in)
 trace::config.auto_flush_at_exit = false;   // Auto-flush on scope exit (default: false, opt-in)
+trace::config.use_double_buffering = false; // Enable double-buffering (default: false, opt-in)
 ```
+
+#### Double-Buffering Mode
+
+For extremely high-frequency tracing scenarios where flush operations are called frequently:
+
+```cpp
+trace::config.use_double_buffering = true;  // Enable double-buffering
+```
+
+**Benefits:**
+- **Eliminates race conditions** during flush operations
+- **Zero disruption**: Write to one buffer while flushing the other
+- **Safe concurrent operations**: No blocking between writes and flushes
+- **Better performance** in high-frequency scenarios (millions of events/sec)
+
+**Trade-offs:**
+- **2x memory usage** per thread (~4MB per thread with default settings)
+- **Slightly more complex** implementation
+
+**When to use:**
+- Generating millions of trace events per second
+- Frequent flush operations (e.g., every 10ms)
+- Multiple threads with high-frequency tracing
+- When you need guaranteed race-free flush operations
+
+**Example:**
+```cpp
+// Enable double-buffering for high-frequency tracing
+trace::config.use_double_buffering = true;
+
+// Start high-frequency tracing...
+// Flushes can happen concurrently without blocking writes
+```
+
+See `examples/example_double_buffer.cpp` for a complete demonstration.
 
 ### Customizing Visual Markers
 

@@ -15,3 +15,6 @@ target_link_libraries(example_colors PRIVATE trace_scope)
 add_executable(example_hybrid example_hybrid.cpp)
 target_link_libraries(example_hybrid PRIVATE trace_scope)
 
+add_executable(example_double_buffer example_double_buffer.cpp)
+target_link_libraries(example_double_buffer PRIVATE trace_scope)
+
