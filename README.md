@@ -947,21 +947,24 @@ All tests run cleanly with **zero external dependencies** - just C++17 standard 
 - ✅ Rich assertion macros and clear reporting
 - See Development & Testing section above
 
-### Near-Term Features
-
-**Filtering & Selective Tracing**
-- Filter by function name patterns (regex)
-- Filter by file/path patterns
-- Filter by depth range
-- Enable/disable tracing dynamically at runtime
-- Thread-specific filtering
+**Filtering & Selective Tracing** *(Implemented)*
+- ✅ Wildcard pattern matching for functions and files
+- ✅ Include/exclude filter lists (exclude wins priority)
+- ✅ Max depth limiting to prevent recursion spam
+- ✅ INI configuration support with `[filter]` section
+- ✅ 22 comprehensive tests, all passing
+- ✅ Runtime configurable - no recompilation needed
+- See Filtering and Selective Tracing section above
 
 **Example:**
 ```cpp
-trace::filter::exclude_functions(".*test.*");  // Skip test functions
-trace::filter::include_files("src/core/.*");   // Only trace core files
-trace::filter::max_depth(10);                  // Limit depth
+trace::filter_include_function("core_*");      // Only trace core functions
+trace::filter_exclude_function("*_test");      // Skip test functions
+trace::filter_include_file("src/networking/*"); // Only trace networking
+trace::filter_set_max_depth(10);               // Limit depth
 ```
+
+### Near-Term Features
 
 **Performance Metrics & Analysis**
 - Per-function call count tracking
