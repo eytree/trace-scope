@@ -3,12 +3,16 @@ project(trace_scope LANGUAGES CXX)
 
 option(TRACE_ENABLED "Enable trace instrumentation" ON)
 option(BUILD_TESTS "Build tests" ON)
+option(BUILD_EXAMPLES "Build examples" ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Interface header-only library
 add_library(trace_scope INTERFACE)
-target_include_directories(trace_scope INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(trace_scope INTERFACE 
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
 if(TRACE_ENABLED)
     target_compile_definitions(trace_scope INTERFACE TRACE_ENABLED=1)
 else()
@@ -16,26 +20,11 @@ else()
 endif()
 
 # Examples
-add_executable(example_basic examples/example_basic.cpp)
-target_link_libraries(example_basic PRIVATE trace_scope)
-
-add_executable(example_dll_shared examples/example_dll_shared.cpp)
-target_link_libraries(example_dll_shared PRIVATE trace_scope)
-
-add_executable(example_custom_markers examples/example_custom_markers.cpp)
-target_link_libraries(example_custom_markers PRIVATE trace_scope)
-
-add_executable(example_colors examples/example_colors.cpp)
-target_link_libraries(example_colors PRIVATE trace_scope)
+if(BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
 
 # Tests
 if(BUILD_TESTS)
-  add_executable(test_trace tests/test_trace.cpp)
-  target_link_libraries(test_trace PRIVATE trace_scope)
-  
-  add_executable(test_comprehensive tests/test_comprehensive.cpp)
-  target_link_libraries(test_comprehensive PRIVATE trace_scope)
-  
-  add_executable(test_binary_format tests/test_binary_format.cpp)
-  target_link_libraries(test_binary_format PRIVATE trace_scope)
+    add_subdirectory(tests)
 endif()

@@ -100,6 +100,11 @@ struct Config {
     bool print_thread = true;         ///< Show thread ID in hex format
     bool auto_flush_at_exit = false;  ///< Automatically flush when outermost scope exits (opt-in)
     bool immediate_mode = false;      ///< Bypass ring buffer, print immediately (opt-in, for long-running processes)
+    
+    // Hybrid mode (buffered + immediate simultaneously)
+    bool hybrid_mode = false;         ///< Enable hybrid mode: buffer AND print immediately (opt-in)
+    FILE* immediate_out = nullptr;    ///< Separate output stream for immediate output in hybrid mode (nullptr = use 'out')
+    float auto_flush_threshold = 0.9f; ///< Auto-flush when buffer reaches this fraction full (0.0-1.0, default 0.9 = 90%)
 
     // Prefix content control
     bool include_file_line = true;    ///< Include filename:line in prefix block
@@ -123,12 +128,19 @@ struct Config {
     
     // ANSI color support
     bool colorize_depth = false;        ///< Colorize output based on call depth (opt-in, ANSI colors)
+    
+    // Double-buffering for high-frequency tracing
+    bool use_double_buffering = false;  ///< Enable double-buffering (opt-in, eliminates flush race conditions)
+                                        ///< Pros: Safe concurrent write/flush, zero disruption, better for high-frequency tracing
+                                        ///< Cons: 2x memory per thread (~4MB default), slightly more complex
+                                        ///< Use when: Generating millions of events/sec with frequent flushing
 };
 TRACE_SCOPE_VAR Config config;
 
 // Forward declarations for external state system
 struct Registry;
 inline Config& get_config();
+inline void flush_current_thread();
 
 // External state pointers for DLL-safe cross-boundary tracing (header-only solution)
 // When set, these override the default inline instances
@@ -169,16 +181,56 @@ inline void print_event(const Event& e, FILE* out);
  * Each thread gets its own Ring (thread_local storage). Events are written
  * lock-free to the ring buffer. When the buffer fills, oldest events are
  * overwritten (wraps counter increments).
+ * 
+ * Supports optional double-buffering mode (see Config::use_double_buffering):
+ * - Single buffer: Events written directly to buf[0], flushed in-place (default)
+ * - Double buffer: Two buffers alternate; write to one while flushing the other
  */
 struct Ring {
-    Event       buf[TRACE_RING_CAP];                ///< Circular buffer of events
-    uint32_t    head = 0;                           ///< Next write position
-    uint64_t    wraps = 0;                          ///< Number of buffer wraparounds
+    Event       buf[2][TRACE_RING_CAP];             ///< Circular buffer(s): [0] for single mode, [0]/[1] for double mode
+    uint32_t    head[2] = {0, 0};                   ///< Next write position per buffer
+    uint64_t    wraps[2] = {0, 0};                  ///< Number of buffer wraparounds per buffer
+    std::atomic<int> active_buf{0};                 ///< Active buffer index for double-buffering (0 or 1)
+    std::mutex  flush_mtx;                          ///< Protects buffer swap during flush (double-buffer mode only)
     int         depth = 0;                          ///< Current call stack depth
     uint32_t    tid   = 0;                          ///< Thread ID (cached)
     bool        registered = false;                 ///< Whether this ring is registered globally
     uint64_t    start_stack[TRACE_DEPTH_MAX];       ///< Start timestamp per depth (for duration calculation)
     const char* func_stack[TRACE_DEPTH_MAX];        ///< Function name per depth (for message context)
+    
+    /**
+     * @brief Destructor: Unregister from global registry.
+     * 
+     * When a thread exits, its thread_local Ring is destroyed. We remove it
+     * from the global registry to prevent flush_all() from accessing freed memory.
+     * 
+     * Note: Any unflushed events in this ring will be lost. Applications should
+     * call flush_all() or enable auto_flush_at_exit before threads terminate.
+     */
+    inline ~Ring();  // Defined after registry() declaration
+
+    /**
+     * @brief Check if ring buffer should be auto-flushed (hybrid mode).
+     * 
+     * Returns true if hybrid mode is enabled and buffer usage exceeds
+     * the configured threshold.
+     * 
+     * @return true if buffer should be flushed
+     */
+    inline bool should_auto_flush() const {
+        if (!get_config().hybrid_mode) {
+            return false;
+        }
+        
+        // Check active buffer usage
+        int buf_idx = get_config().use_double_buffering ? active_buf.load(std::memory_order_relaxed) : 0;
+        float usage = (float)head[buf_idx] / (float)TRACE_RING_CAP;
+        if (wraps[buf_idx] > 0) {
+            usage = 1.0f;  // Already wrapped = 100% full
+        }
+        
+        return usage >= get_config().auto_flush_threshold;
+    }
 
     /**
      * @brief Write a trace event (Enter/Exit/Msg).
@@ -225,18 +277,52 @@ struct Ring {
             e.depth = depth;
         }
 
-        // Immediate mode: print directly instead of buffering
-        if (get_config().immediate_mode) {
+        // Hybrid mode: buffer AND print immediately, with auto-flush
+        if (get_config().hybrid_mode) {
+            // Write to ring buffer first (single or double-buffer mode)
+            int buf_idx = get_config().use_double_buffering ? active_buf.load(std::memory_order_relaxed) : 0;
+            buf[buf_idx][head[buf_idx]] = e;
+            head[buf_idx] = (head[buf_idx] + 1) % TRACE_RING_CAP;
+            if (head[buf_idx] == 0) {
+                ++wraps[buf_idx];
+            }
+            
+            // Check if we need to auto-flush BEFORE acquiring lock
+            bool needs_flush = should_auto_flush();
+            
+            // Also print immediately for real-time visibility
+            {
+                static std::mutex io_mtx;
+                std::lock_guard<std::mutex> lock(io_mtx);
+                FILE* imm_out = get_config().immediate_out;
+                if (!imm_out) {
+                    imm_out = get_config().out ? get_config().out : stdout;
+                }
+                print_event(e, imm_out);
+                std::fflush(imm_out);
+            }
+            
+            // Auto-flush if buffer is near capacity (outside lock to avoid deadlock)
+            if (needs_flush) {
+                flush_current_thread();
+            }
+        }
+        // Immediate mode: print directly without buffering
+        else if (get_config().immediate_mode) {
             static std::mutex io_mtx;
             std::lock_guard<std::mutex> lock(io_mtx);
             FILE* out = get_config().out ? get_config().out : stdout;
             print_event(e, out);
             std::fflush(out);
-        } else {
-            // Buffered mode: write to ring buffer
-            buf[head] = e;
-            head = (head + 1) % TRACE_RING_CAP;
-            if (head == 0) ++wraps;
+        }
+        // Buffered mode: write to ring buffer only (single or double-buffer mode)
+        else {
+            int buf_idx = get_config().use_double_buffering ? active_buf.load(std::memory_order_relaxed) : 0;
+            buf[buf_idx][head[buf_idx]] = e;
+            head[buf_idx] = (head[buf_idx] + 1) % TRACE_RING_CAP;
+            if (head[buf_idx] == 0) {
+                ++wraps[buf_idx];
+            }
         }
     }
 
@@ -260,8 +346,31 @@ struct Ring {
             current_func = func_stack[d];
         }
         
-        if (get_config().immediate_mode) {
-            // Immediate mode: format and print directly
+        // Hybrid mode: buffer AND print immediately
+        if (get_config().hybrid_mode) {
+            // Write to buffer first (via write())
+            write(EventType::Msg, current_func, file, line);
+            int buf_idx = get_config().use_double_buffering ? active_buf.load(std::memory_order_relaxed) : 0;
+            Event& e = buf[buf_idx][(head[buf_idx] + TRACE_RING_CAP - 1) % TRACE_RING_CAP];
+            
+            // Format the message
+            if (!fmt) {
+                e.msg[0] = 0;
+            }
+            else {
+                int n = std::vsnprintf(e.msg, TRACE_MSG_CAP, fmt, ap);
+                if (n < 0) {
+                    e.msg[0] = 0;
+                }
+                else {
+                    e.msg[std::min(n, TRACE_MSG_CAP)] = 0;
+                }
+            }
+            
+            // Note: write() already handles immediate output and auto-flush for hybrid mode
+        }
+        // Immediate mode: format and print directly
+        else if (get_config().immediate_mode) {
             const auto now = std::chrono::system_clock::now().time_since_epoch();
             uint64_t now_ns = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
             
@@ -275,11 +384,17 @@ struct Ring {
             e.depth = depth;
             e.dur_ns = 0;
             
-            if (!fmt) { e.msg[0] = 0; } 
+            if (!fmt) {
+                e.msg[0] = 0;
+            }
             else {
                 int n = std::vsnprintf(e.msg, TRACE_MSG_CAP, fmt, ap);
-                if (n < 0) e.msg[0] = 0;
-                else e.msg[std::min(n, TRACE_MSG_CAP)] = 0;
+                if (n < 0) {
+                    e.msg[0] = 0;
+                }
+                else {
+                    e.msg[std::min(n, TRACE_MSG_CAP)] = 0;
+                }
             }
             
             static std::mutex io_mtx;
@@ -287,14 +402,25 @@ struct Ring {
             FILE* out = get_config().out ? get_config().out : stdout;
             print_event(e, out);
             std::fflush(out);
-        } else {
-            // Buffered mode: write to ring buffer
+        }
+        // Buffered mode: write to ring buffer only
+        else {
             write(EventType::Msg, current_func, file, line);
-            Event& e = buf[(head + TRACE_RING_CAP - 1) % TRACE_RING_CAP];
-            if (!fmt) { e.msg[0] = 0; return; }
+            int buf_idx = get_config().use_double_buffering ? active_buf.load(std::memory_order_relaxed) : 0;
+            Event& e = buf[buf_idx][(head[buf_idx] + TRACE_RING_CAP - 1) % TRACE_RING_CAP];
+            
+            if (!fmt) {
+                e.msg[0] = 0;
+                return;
+            }
+            
             int n = std::vsnprintf(e.msg, TRACE_MSG_CAP, fmt, ap);
-            if (n < 0) e.msg[0] = 0;
-            else e.msg[std::min(n, TRACE_MSG_CAP)] = 0;
+            if (n < 0) {
+                e.msg[0] = 0;
+            }
+            else {
+                e.msg[std::min(n, TRACE_MSG_CAP)] = 0;
+            }
         }
     }
 };
@@ -316,6 +442,15 @@ struct Registry {
     inline void add(Ring* r) {
         std::lock_guard<std::mutex> lock(mtx);
         rings.push_back(r);
+    }
+    
+    /**
+     * @brief Unregister a ring buffer (called from Ring destructor).
+     * @param r Pointer to ring buffer to remove
+     */
+    inline void remove(Ring* r) {
+        std::lock_guard<std::mutex> lock(mtx);
+        rings.erase(std::remove(rings.begin(), rings.end(), r), rings.end());
     }
 };
 
@@ -396,6 +531,18 @@ inline Registry& registry() {
     return r;
 }
 #endif
+
+/**
+ * @brief Ring destructor implementation.
+ * 
+ * Defined here after registry() is available.
+ */
+inline Ring::~Ring() {
+    if (registered) {
+        registry().remove(this);
+        registered = false;
+    }
+}
 
 /**
  * @brief Hash the current thread ID to a printable 32-bit value.
@@ -598,22 +745,64 @@ inline void print_event(const Event& e, FILE* out) {
  * via static mutex. If the ring has wrapped, only the most recent
  * TRACE_RING_CAP events are printed.
  * 
- * @param r The ring buffer to flush
+ * In double-buffering mode: atomically swaps buffers, flushes the old buffer,
+ * then clears it for reuse. This allows writes to continue to the new active
+ * buffer while flushing the old one without race conditions.
+ * 
+ * @param r The ring buffer to flush (non-const for double-buffering)
  */
-inline void flush_ring(const Ring& r) {
+inline void flush_ring(Ring& r) {
     static std::mutex io_mtx;
-    std::lock_guard<std::mutex> guard(io_mtx);
     FILE* out = get_config().out ? get_config().out : stdout;
 
-    uint32_t count = (r.wraps == 0) ? r.head : TRACE_RING_CAP;
-    uint32_t start = (r.wraps == 0) ? 0 : r.head;
-
-    for (uint32_t i = 0; i < count; ++i) {
-        uint32_t idx = (start + i) % TRACE_RING_CAP;
-        const Event& e = r.buf[idx];
-        print_event(e, out);
+    int flush_buf_idx = 0;
+    uint32_t count = 0;
+    uint32_t start = 0;
+    
+    // Double-buffering mode: swap buffers atomically
+    if (get_config().use_double_buffering) {
+        std::lock_guard<std::mutex> flush_lock(r.flush_mtx);
+        
+        // Atomically swap active buffer
+        int old_buf = r.active_buf.load(std::memory_order_relaxed);
+        int new_buf = 1 - old_buf;
+        r.active_buf.store(new_buf, std::memory_order_release);
+        
+        // Now flush the old buffer (no one is writing to it)
+        flush_buf_idx = old_buf;
+        count = (r.wraps[flush_buf_idx] == 0) ? r.head[flush_buf_idx] : TRACE_RING_CAP;
+        start = (r.wraps[flush_buf_idx] == 0) ? 0 : r.head[flush_buf_idx];
+        
+        // Print events from the flushed buffer
+        {
+            std::lock_guard<std::mutex> io_lock(io_mtx);
+            for (uint32_t i = 0; i < count; ++i) {
+                uint32_t idx = (start + i) % TRACE_RING_CAP;
+                const Event& e = r.buf[flush_buf_idx][idx];
+                print_event(e, out);
+            }
+            std::fflush(out);
+        }
+        
+        // Clear the flushed buffer for reuse
+        r.head[flush_buf_idx] = 0;
+        r.wraps[flush_buf_idx] = 0;
     }
-    std::fflush(out);
+    // Single-buffer mode: flush in-place (original behavior)
+    else {
+        std::lock_guard<std::mutex> io_lock(io_mtx);
+        
+        flush_buf_idx = 0;
+        count = (r.wraps[flush_buf_idx] == 0) ? r.head[flush_buf_idx] : TRACE_RING_CAP;
+        start = (r.wraps[flush_buf_idx] == 0) ? 0 : r.head[flush_buf_idx];
+        
+        for (uint32_t i = 0; i < count; ++i) {
+            uint32_t idx = (start + i) % TRACE_RING_CAP;
+            const Event& e = r.buf[flush_buf_idx][idx];
+            print_event(e, out);
+        }
+        std::fflush(out);
+    }
 }
 
 /**
@@ -624,8 +813,25 @@ inline void flush_ring(const Ring& r) {
  */
 inline void flush_all() {
     std::vector<Ring*> snapshot;
-    { std::lock_guard<std::mutex> lock(registry().mtx); snapshot = registry().rings; }
-    for (Ring* r : snapshot) if (r && r->registered) flush_ring(*r);
+    { 
+        std::lock_guard<std::mutex> lock(registry().mtx); 
+        snapshot = registry().rings; 
+    }
+    for (Ring* r : snapshot) {
+        if (r && r->registered) {
+            flush_ring(*r);
+        }
+    }
+}
+
+/**
+ * @brief Flush only the current thread's ring buffer.
+ * 
+ * Used by hybrid mode for auto-flushing when buffer approaches capacity.
+ * Only flushes the calling thread's buffer, not all threads.
+ */
+inline void flush_current_thread() {
+    flush_ring(thread_ring());
 }
 
 /**
@@ -673,29 +879,35 @@ inline bool dump_binary(const char* path) {
 
     for (Ring* r : snapshot) {
         if (!r || !r->registered) continue;
-        uint32_t count = (r->wraps == 0) ? r->head : TRACE_RING_CAP;
-        uint32_t start = (r->wraps == 0) ? 0 : r->head;
+        
+        // Determine which buffer(s) to dump
+        int num_buffers = get_config().use_double_buffering ? 2 : 1;
+        
+        for (int buf_idx = 0; buf_idx < num_buffers; ++buf_idx) {
+            uint32_t count = (r->wraps[buf_idx] == 0) ? r->head[buf_idx] : TRACE_RING_CAP;
+            uint32_t start = (r->wraps[buf_idx] == 0) ? 0 : r->head[buf_idx];
 
-        for (uint32_t i = 0; i < count; ++i) {
-            uint32_t idx = (start + i) % TRACE_RING_CAP;
-            const Event& e = r->buf[idx];
+            for (uint32_t i = 0; i < count; ++i) {
+                uint32_t idx = (start + i) % TRACE_RING_CAP;
+                const Event& e = r->buf[buf_idx][idx];
 
-            w8((uint8_t)e.type);
-            w32(e.tid);
-            w64(e.ts_ns);
-            w32((uint32_t)e.depth);
-            w64(e.dur_ns);
+                w8((uint8_t)e.type);
+                w32(e.tid);
+                w64(e.ts_ns);
+                w32((uint32_t)e.depth);
+                w64(e.dur_ns);
 
-            // file, func, msg as length-prefixed
-            auto emit_str = [&](const char* s){
-                if (!s) { w16(0); return; }
-                uint16_t n = (uint16_t)std::min<size_t>(65535, std::strlen(s));
-                w16(n); ws(s, n);
-            };
-            emit_str(e.file);
-            emit_str(e.func);
-            emit_str(e.msg);
-            w32((uint32_t)e.line);
+                // file, func, msg as length-prefixed
+                auto emit_str = [&](const char* s){
+                    if (!s) { w16(0); return; }
+                    uint16_t n = (uint16_t)std::min<size_t>(65535, std::strlen(s));
+                    w16(n); ws(s, n);
+                };
+                emit_str(e.file);
+                emit_str(e.func);
+                emit_str(e.msg);
+                w32((uint32_t)e.line);
+            }
         }
     }
     std::fclose(f);

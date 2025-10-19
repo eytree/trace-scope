@@ -11,7 +11,7 @@
  * - Need unified trace output from all DLLs
  */
 
-#include "../include/trace_scope.hpp"
+#include <trace-scope/trace_scope.hpp>
 #include <cstdio>
 
 // ============================================================================
