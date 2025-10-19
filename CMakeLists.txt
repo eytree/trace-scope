@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(trace_scope LANGUAGES CXX)
 
 option(TRACE_ENABLED "Enable trace instrumentation" ON)
+option(TRACE_DOUBLE_BUFFER "Enable double-buffering support (saves ~1.2MB per thread when OFF)" OFF)
 option(BUILD_TESTS "Build tests" ON)
 option(BUILD_EXAMPLES "Build examples" ON)
 set(CMAKE_CXX_STANDARD 17)
@@ -17,6 +18,12 @@ if(TRACE_ENABLED)
     target_compile_definitions(trace_scope INTERFACE TRACE_ENABLED=1)
 else()
     target_compile_definitions(trace_scope INTERFACE TRACE_ENABLED=0)
+endif()
+
+if(TRACE_DOUBLE_BUFFER)
+    target_compile_definitions(trace_scope INTERFACE TRACE_DOUBLE_BUFFER=1)
+else()
+    target_compile_definitions(trace_scope INTERFACE TRACE_DOUBLE_BUFFER=0)
 endif()
 
 # Examples

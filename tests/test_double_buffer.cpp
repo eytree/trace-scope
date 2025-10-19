@@ -6,10 +6,16 @@
  * 1. Functional test: Verify buffer swapping and event ordering
  * 2. Stress test: High-frequency concurrent writes with frequent flushes
  * 3. Correctness test: Verify no events lost during buffer swaps
+ * 
+ * REQUIRES: Compile with TRACE_DOUBLE_BUFFER=1
  */
 
 #include <trace-scope/trace_scope.hpp>
 #include "test_framework.hpp"
+
+#if !TRACE_DOUBLE_BUFFER
+#error "This test requires TRACE_DOUBLE_BUFFER=1. Reconfigure cmake with -DTRACE_DOUBLE_BUFFER=ON"
+#endif
 #include <thread>
 #include <chrono>
 #include <atomic>
