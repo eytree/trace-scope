@@ -320,6 +320,136 @@ trace::config.mode = trace::TracingMode::Hybrid;
 - Separate output streams possible (see Hybrid Mode section below)
 - No post-processing needed (no flush required)
 
+## Filtering and Selective Tracing
+
+Focus tracing on specific functions, files, or depth ranges using runtime filters with simple wildcard patterns.
+
+### Programmatic Filtering
+
+```cpp
+#include <trace-scope/trace_scope.hpp>
+
+int main() {
+    // Include only specific functions
+    trace::filter_include_function("my_namespace::*");
+    trace::filter_include_function("core_*");
+    
+    // Exclude test/debug functions
+    trace::filter_exclude_function("*_test");
+    trace::filter_exclude_function("debug_*");
+    
+    // Limit call depth
+    trace::filter_set_max_depth(15);
+    
+    // Use tracing - only matching functions/files traced
+    TRACE_SCOPE();
+}
+```
+
+### Configuration File Filtering
+
+```ini
+[filter]
+include_function = my_namespace::*
+include_function = core_*
+exclude_function = *_test
+exclude_function = debug_*
+
+include_file = src/core/*
+exclude_file = */test/*
+
+max_depth = 15
+```
+
+### How Filters Work
+
+**Function Filters:**
+- **Include**: Only trace functions matching these patterns (empty = trace all)
+- **Exclude**: Never trace these functions (overrides include)
+- **Patterns**: Use `*` wildcard (e.g., `test_*`, `*_debug`, `*mid*`)
+
+**File Filters:**
+- **Include**: Only trace files matching these patterns (empty = trace all)
+- **Exclude**: Never trace these files (overrides include)
+- **Patterns**: Use `*` for paths (e.g., `src/core/*`, `*/test/*`)
+
+**Depth Filter:**
+- `max_depth = N` - don't trace beyond depth N
+- -1 = unlimited (default)
+- Helps avoid deep recursion spam
+
+**Exclude always wins:** If a function/file matches both include and exclude, it's excluded.
+
+### Filter API
+
+```cpp
+// Function filters
+trace::filter_include_function("core::*");
+trace::filter_exclude_function("*_test");
+
+// File filters
+trace::filter_include_file("src/networking/*");
+trace::filter_exclude_file("*/tests/*");
+
+// Depth filter
+trace::filter_set_max_depth(10);
+
+// Clear all filters (restore to trace everything)
+trace::filter_clear();
+```
+
+### Use Cases
+
+**Focus on specific module:**
+```cpp
+trace::filter_include_file("src/networking/*");
+```
+
+**Exclude test code:**
+```cpp
+trace::filter_exclude_function("*_test");
+trace::filter_exclude_file("*/tests/*");
+```
+
+**Limit call depth:**
+```cpp
+trace::filter_set_max_depth(10);  // Prevent deep recursion spam
+```
+
+**Complex filtering:**
+```ini
+[filter]
+# Only trace core module
+include_file = src/core/*
+
+# But exclude tests and debug functions
+exclude_function = *_test
+exclude_function = debug_*
+exclude_file = */test/*
+
+# Limit depth
+max_depth = 12
+```
+
+### Wildcard Patterns
+
+- `*` matches zero or more characters
+- Case-sensitive matching
+- Examples:
+  - `test_*` matches `test_foo`, `test_bar_baz`
+  - `*_test` matches `my_test`, `foo_bar_test`
+  - `*mid*` matches `midpoint`, `pyramid`, `mid`
+  - `*::*` matches `namespace::function`
+
+### Performance Notes
+
+- Filters checked once per TRACE_SCOPE() call
+- Filtered events never written to ring buffer (saves memory)
+- Minimal overhead (string comparison only when tracing)
+- Typical use: < 10 patterns, negligible impact
+
+See `examples/example_filtering.cpp` for comprehensive demonstration.
+
 ## Stream-Based Logging (TRACE_LOG)
 
 For C++ iostream-style logging, use `TRACE_LOG`:
