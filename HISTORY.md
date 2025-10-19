@@ -65,7 +65,7 @@ python trc_pretty.py trace.bin --color --max-depth 8 \
 - `process_trace()` - Main loop with filter application and statistics
 
 **Testing:**
-- Created `test_trc_pretty_v2.py` with 7 comprehensive tests
+- Created `test_trc_pretty.py` with 7 comprehensive tests
 - All tests pass: wildcard matching, function filters, file filters, thread filters, exclude priority
 - Created `test_python_tool.cpp` to generate test binaries
 - Verified filtering, colors, and statistics work correctly
@@ -81,7 +81,7 @@ python trc_pretty.py trace.bin --color --max-depth 8 \
 **Files:**
 - `include/trace-scope/trace_scope.hpp` (+16 lines) - Binary format v2, updated comments
 - `tools/trc_pretty.py` (rewrite, +185 lines, -92 old) - Complete feature parity
-- `tools/test_trc_pretty_v2.py` (145 lines) - Comprehensive testing
+- `tools/test_trc_pretty.py` (145 lines) - Comprehensive testing
 - `examples/test_python_tool.cpp` (50 lines) - Test binary generator
 - `README.md` (+55 lines) - Python tool documentation with options table
 
