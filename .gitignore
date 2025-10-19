@@ -43,3 +43,6 @@ cmake_install.cmake
 
 # Python cache
 tools/__pycache__/
+
+# Build directories
+build_ninja_clang/
