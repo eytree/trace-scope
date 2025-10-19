@@ -10,7 +10,7 @@
 // Test 1: Multi-threaded tracing (thread safety)
 TEST(multi_threaded_trace) {
     trace::config.out = std::fopen("test_multithread.log", "w");
-    trace::config.immediate_mode = false;
+    trace::config.mode = trace::TracingMode::Buffered;
     
     auto worker = [](int id) {
         TRACE_SCOPE();
@@ -37,7 +37,7 @@ TEST(multi_threaded_trace) {
 TEST(immediate_vs_buffered) {
     // Test immediate mode
     {
-        trace::config.immediate_mode = true;
+        trace::config.mode = trace::TracingMode::Immediate;
         trace::config.out = std::fopen("test_immediate.log", "w");
         
         TRACE_SCOPE();
@@ -45,7 +45,7 @@ TEST(immediate_vs_buffered) {
         TRACE_MSG("Immediate mode message 2");
         
         std::fclose(trace::config.out);
-        trace::config.immediate_mode = false;
+        trace::config.mode = trace::TracingMode::Buffered;
     }
     
     // Test buffered mode

@@ -75,8 +75,11 @@ trace::config.exit_marker = "<- ";          // Function exit marker (default: "<
 trace::config.msg_marker = "- ";            // Message marker (default: "- ")
 trace::config.colorize_depth = false;       // ANSI color by depth (default: false, opt-in)
 
+// Tracing mode
+trace::config.mode = trace::TracingMode::Buffered;  // Default: buffered
+// Other modes: TracingMode::Immediate, TracingMode::Hybrid
+
 // Advanced options
-trace::config.immediate_mode = false;       // Real-time output (default: false, opt-in)
 trace::config.auto_flush_at_exit = false;   // Auto-flush on scope exit (default: false, opt-in)
 trace::config.use_double_buffering = false; // Enable double-buffering (default: false, opt-in)
 ```
@@ -228,8 +231,7 @@ exit_marker = <-
 message_marker = - 
 
 [modes]
-immediate_mode = false
-hybrid_mode = false
+mode = buffered  # Options: buffered, immediate, hybrid
 auto_flush_at_exit = false
 use_double_buffering = false
 auto_flush_threshold = 0.9
@@ -264,22 +266,38 @@ int main() {
 
 See `examples/trace_config.ini` for a complete annotated example and `examples/example_config_file.cpp` for demonstration.
 
-## Immediate Mode
+## Tracing Modes
 
-For long-running processes or real-time logging, enable immediate mode:
+trace-scope supports three tracing modes, controlled by a single enum:
 
 ```cpp
-trace::config.immediate_mode = true;  // Output printed immediately, no ring buffer
+// Buffered mode (default) - best performance
+trace::config.mode = trace::TracingMode::Buffered;
+
+// Immediate mode - real-time output, no buffering
+trace::config.mode = trace::TracingMode::Immediate;
+
+// Hybrid mode - both buffered AND immediate
+trace::config.mode = trace::TracingMode::Hybrid;
 ```
 
-This bypasses the ring buffer and prints events directly. Useful when:
-- Process may crash and you need immediate output
-- Real-time monitoring during development
-- Memory-constrained environments
+**Buffered Mode** (default):
+- Events stored in per-thread ring buffers
+- Manual flush required (`trace::flush_all()`)
+- Best performance, lowest overhead
+- Events lost on crash if not flushed
 
-Trade-offs:
-- Slower than buffered mode (file I/O on every event)
-- Thread-safe but serialized (mutex-protected output)
+**Immediate Mode**:
+- Events printed immediately, no buffering
+- Useful for crash scenarios or real-time monitoring
+- Higher overhead (file I/O on every event)
+- Thread-safe but serialized (mutex-protected)
+
+**Hybrid Mode**:
+- Events both buffered AND printed immediately
+- Best of both worlds: real-time visibility + history
+- Auto-flush when buffer reaches threshold
+- Separate output streams possible (see Hybrid Mode section below)
 - No post-processing needed (no flush required)
 
 ## Stream-Based Logging (TRACE_LOG)

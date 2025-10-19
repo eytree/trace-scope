@@ -91,6 +91,20 @@ namespace trace {
 struct Config;
 
 /**
+ * @brief Tracing output mode.
+ * 
+ * Determines how trace events are captured and output:
+ * - Buffered: Events stored in ring buffer, flushed manually (default, best performance)
+ * - Immediate: Events printed immediately, no buffering (real-time, higher overhead)
+ * - Hybrid: Events both buffered AND printed immediately (best of both worlds)
+ */
+enum class TracingMode {
+    Buffered,   ///< Default: events buffered in ring buffer, manual flush required
+    Immediate,  ///< Real-time output: bypass ring buffer, print immediately
+    Hybrid      ///< Hybrid: buffer events AND print immediately for real-time + history
+};
+
+/**
  * @brief INI file parser utilities for configuration loading.
  * 
  * Simple, dependency-free INI parser supporting:
@@ -181,12 +195,11 @@ struct Config {
     bool print_timestamp = false;     ///< Show ISO timestamps [YYYY-MM-DD HH:MM:SS.mmm] (opt-in)
     bool print_thread = true;         ///< Show thread ID in hex format
     bool auto_flush_at_exit = false;  ///< Automatically flush when outermost scope exits (opt-in)
-    bool immediate_mode = false;      ///< Bypass ring buffer, print immediately (opt-in, for long-running processes)
     
-    // Hybrid mode (buffered + immediate simultaneously)
-    bool hybrid_mode = false;         ///< Enable hybrid mode: buffer AND print immediately (opt-in)
-    FILE* immediate_out = nullptr;    ///< Separate output stream for immediate output in hybrid mode (nullptr = use 'out')
-    float auto_flush_threshold = 0.9f; ///< Auto-flush when buffer reaches this fraction full (0.0-1.0, default 0.9 = 90%)
+    // Tracing mode
+    TracingMode mode = TracingMode::Buffered;  ///< Tracing output mode (default: Buffered)
+    FILE* immediate_out = nullptr;    ///< Separate output stream for immediate output in Hybrid mode (nullptr = use 'out')
+    float auto_flush_threshold = 0.9f; ///< Auto-flush when buffer reaches this fraction full in Hybrid mode (0.0-1.0, default 0.9 = 90%)
 
     // Prefix content control
     bool include_file_line = true;    ///< Include filename:line in prefix block
@@ -322,7 +335,7 @@ struct Ring {
      * @return true if buffer should be flushed
      */
     inline bool should_auto_flush() const {
-        if (!get_config().hybrid_mode) {
+        if (get_config().mode != TracingMode::Hybrid) {
             return false;
         }
         
@@ -382,7 +395,7 @@ struct Ring {
         }
 
         // Hybrid mode: buffer AND print immediately, with auto-flush
-        if (get_config().hybrid_mode) {
+        if (get_config().mode == TracingMode::Hybrid) {
             // Write to ring buffer first (single or double-buffer mode)
             int buf_idx = get_config().use_double_buffering ? active_buf.load(std::memory_order_relaxed) : 0;
             buf[buf_idx][head[buf_idx]] = e;
@@ -412,7 +425,7 @@ struct Ring {
             }
         }
         // Immediate mode: print directly without buffering
-        else if (get_config().immediate_mode) {
+        else if (get_config().mode == TracingMode::Immediate) {
             static std::mutex io_mtx;
             std::lock_guard<std::mutex> lock(io_mtx);
             FILE* out = get_config().out ? get_config().out : stdout;
@@ -451,7 +464,7 @@ struct Ring {
         }
         
         // Hybrid mode: buffer AND print immediately
-        if (get_config().hybrid_mode) {
+        if (get_config().mode == TracingMode::Hybrid) {
             // Write to buffer first (via write())
             write(EventType::Msg, current_func, file, line);
             int buf_idx = get_config().use_double_buffering ? active_buf.load(std::memory_order_relaxed) : 0;
@@ -474,7 +487,7 @@ struct Ring {
             // Note: write() already handles immediate output and auto-flush for hybrid mode
         }
         // Immediate mode: format and print directly
-        else if (get_config().immediate_mode) {
+        else if (get_config().mode == TracingMode::Immediate) {
             const auto now = std::chrono::system_clock::now().time_since_epoch();
             uint64_t now_ns = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
             
@@ -633,8 +646,9 @@ inline void set_external_state(Config* cfg, Registry* reg) {
     static struct TraceDllGuard { \
         TraceDllGuard() { \
             trace::set_external_state(&g_trace_shared_config, &g_trace_shared_registry); \
-            if (config_file && config_file[0]) { \
-                g_trace_shared_config.load_from_file(config_file); \
+            const char* cfg_path = (config_file); \
+            if (cfg_path && cfg_path[0]) { \
+                g_trace_shared_config.load_from_file(cfg_path); \
             } \
         } \
         ~TraceDllGuard() { \
@@ -765,8 +779,20 @@ inline bool Config::load_from_file(const char* path) {
             }
         }
         else if (current_section == "modes") {
-            if (key == "immediate_mode") immediate_mode = ini_parser::parse_bool(value);
-            else if (key == "hybrid_mode") hybrid_mode = ini_parser::parse_bool(value);
+            if (key == "mode") {
+                std::string m = ini_parser::trim(value);
+                // Convert to lowercase for case-insensitive comparison
+                for (char& c : m) {
+                    c = (char)std::tolower((unsigned char)c);
+                }
+                if (m == "buffered") mode = TracingMode::Buffered;
+                else if (m == "immediate") mode = TracingMode::Immediate;
+                else if (m == "hybrid") mode = TracingMode::Hybrid;
+                else {
+                    std::fprintf(stderr, "trace-scope: Warning: Unknown mode '%s' in %s:%d\n", 
+                                value.c_str(), path, line_num);
+                }
+            }
             else if (key == "auto_flush_at_exit") auto_flush_at_exit = ini_parser::parse_bool(value);
             else if (key == "use_double_buffering") use_double_buffering = ini_parser::parse_bool(value);
             else if (key == "auto_flush_threshold") auto_flush_threshold = ini_parser::parse_float(value);
