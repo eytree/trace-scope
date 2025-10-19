@@ -37,3 +37,6 @@ cmake_install.cmake
 # Backup files
 *.orig
 *~
+
+# clangd files
+.cache/

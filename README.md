@@ -239,36 +239,57 @@ TRACE_LOG << "Processing id=" << id << ", name=" << name;
 
 By default, trace_scope is header-only. When used across multiple DLLs, each DLL gets its own copy of the global state (config and registry). This means traces from different DLLs won't be combined.
 
-### Recommended Solution: External State Injection
+### Simple Solution: TRACE_SETUP_DLL_SHARED() Macro
 
-**For large codebases where you cannot control which files are compiled**, use the header-only external state injection:
+**Just one line in your main executable:**
 
-1. **Create shared state in your main executable** (or a common header):
 ```cpp
-// In main.cpp or a shared header included by all DLLs:
+#include <trace-scope/trace_scope.hpp>
+
+int main() {
+    TRACE_SETUP_DLL_SHARED();  // That's it! Automatic setup & cleanup
+    
+    // Configure as needed (use get_config() to access shared config)
+    trace::get_config().out = std::fopen("trace.log", "w");
+    
+    // Use tracing normally - all DLLs share the same state!
+    TRACE_SCOPE();
+    call_dll_functions();
+    
+    return 0;  // Automatic flush via RAII
+}
+```
+
+**That's it!** Completely header-only, automatic cleanup, works across any number of DLLs.
+
+**Benefits:**
+- ✅ **1 line of code** (was 20+ lines before)
+- ✅ **Automatic cleanup** via RAII (flush on exit)
+- ✅ **Exception-safe** (cleanup even if exceptions occur)
+- ✅ **No manual flush needed** (destructor handles it)
+- ✅ **Zero overhead** when not used
+
+See `examples/example_dll_shared.cpp` for complete demonstration.
+
+### Advanced: Manual Setup
+
+For advanced users who need more control, you can still use `set_external_state()` manually:
+
+```cpp
 namespace {
     trace::Config g_trace_config;
     trace::Registry g_trace_registry;
 }
 
 int main() {
-    // Initialize shared state BEFORE any tracing occurs
     trace::set_external_state(&g_trace_config, &g_trace_registry);
-    
-    // Configure as needed
-    g_trace_config.out = std::fopen("trace.log", "w");
-    
-    // Now all DLLs will share the same trace state!
-    // ...
+    // ... manual cleanup with trace::flush_all()
 }
 ```
 
-2. **All DLLs automatically use the shared state** - no changes needed!
-
-**That's it!** Completely header-only, no compilation requirements, works across any number of DLLs.
-
 ### How It Works
 
+- `TRACE_SETUP_DLL_SHARED()` creates shared state instances with RAII guard
 - `set_external_state()` sets global pointers to your instances
 - All trace operations check these pointers first
 - Falls back to default instances if not set
@@ -628,15 +649,28 @@ All tests run cleanly with **zero external dependencies** - just C++17 standard 
 
 ## Roadmap
 
-### Immediate Priority (Next Release)
+### ✅ Recently Completed
 
-**Hybrid Buffered + Immediate Mode**
-- Support simultaneous buffered and immediate output
-- Auto-flush ring buffer when near capacity (e.g., 90% full)
-- Prevents data loss while maintaining performance
-- Optional file rotation when buffer wraps
+**Hybrid Buffered + Immediate Mode** *(Implemented)*
+- ✅ Simultaneous buffered and immediate output
+- ✅ Auto-flush ring buffer when near capacity (configurable threshold)
+- ✅ Separate output streams for immediate vs buffered
+- ✅ Prevents data loss while maintaining performance
+- See `example_hybrid.cpp` for demonstration
 
-**Use case:** Long-running processes where you want both real-time visibility and complete history without data loss.
+**Double-Buffering Mode** *(Implemented)*
+- ✅ Optional double-buffering for high-frequency tracing
+- ✅ Eliminates race conditions during flush operations
+- ✅ Safe concurrent write/flush operations
+- ✅ Runtime configurable via `trace::config.use_double_buffering`
+- See `example_double_buffer.cpp` and double-buffering section above
+
+**Comprehensive Test Framework** *(Implemented)*
+- ✅ Lightweight, zero-dependency test framework (`test_framework.hpp`)
+- ✅ Selective test execution via command-line filtering
+- ✅ 28 tests covering all functionality
+- ✅ Rich assertion macros and clear reporting
+- See Development & Testing section above
 
 ### Near-Term Features
 

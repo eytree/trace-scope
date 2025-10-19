@@ -1,52 +1,45 @@
 /**
  * @file example_dll_shared.cpp
- * @brief Example demonstrating header-only DLL state sharing.
+ * @brief Example demonstrating simple DLL state sharing with TRACE_SETUP_DLL_SHARED().
  * 
- * This example shows how to share trace state across multiple DLLs
- * without requiring any .cpp compilation. Purely header-only approach.
+ * This example shows how to share trace state across multiple DLLs using
+ * the convenience macro. Just one line in main() - automatic setup and cleanup!
  * 
  * Usage scenario:
  * - Large codebase with multiple DLLs
  * - Cannot control which files are compiled
  * - Need unified trace output from all DLLs
+ * 
+ * New simple approach: Just use TRACE_SETUP_DLL_SHARED() macro!
  */
 
 #include <trace-scope/trace_scope.hpp>
 #include <cstdio>
 
 // ============================================================================
-// STEP 1: Create shared state instances (in main executable or common header)
+// OLD APPROACH (for reference - still works if you need manual control)
+// ============================================================================
+// namespace {
+//     trace::Config g_trace_config;
+//     trace::Registry g_trace_registry;
+//     
+//     struct TraceInit {
+//         TraceInit() {
+//             trace::set_external_state(&g_trace_config, &g_trace_registry);
+//             g_trace_config.out = std::fopen("dll_shared.log", "w");
+//         }
+//         ~TraceInit() {
+//             trace::flush_all();
+//             if (g_trace_config.out && g_trace_config.out != stdout) {
+//                 std::fclose(g_trace_config.out);
+//             }
+//         }
+//     } g_trace_init;
+// }
 // ============================================================================
 
-namespace {
-    // These instances will be shared across all DLLs in the process
-    trace::Config g_trace_config;
-    trace::Registry g_trace_registry;
-    
-    // Optional: Initialize automatically via static constructor
-    struct TraceInit {
-        TraceInit() {
-            // Set external state BEFORE any tracing occurs
-            trace::set_external_state(&g_trace_config, &g_trace_registry);
-            
-            // Configure trace output
-            g_trace_config.out = std::fopen("dll_shared.log", "w");
-            g_trace_config.print_timestamp = false;
-            g_trace_config.print_thread = true;
-        }
-        
-        ~TraceInit() {
-            // Flush and cleanup
-            trace::flush_all();
-            if (g_trace_config.out && g_trace_config.out != stdout) {
-                std::fclose(g_trace_config.out);
-            }
-        }
-    } g_trace_init;  // Constructed before main(), destructed after main()
-}
-
 // ============================================================================
-// STEP 2: Use tracing normally - works across all DLLs!
+// Use tracing normally - works across all DLLs!
 // ============================================================================
 
 /**
@@ -70,9 +63,20 @@ void dll2_function() {
  * @brief Main function (in main executable)
  */
 int main() {
+    // ========================================================================
+    // SIMPLE SETUP: Just one line for DLL state sharing!
+    // ========================================================================
+    TRACE_SETUP_DLL_SHARED();  // Automatic setup & cleanup via RAII
+    
+    // Configure trace output (use get_config() to access the shared config)
+    trace::get_config().out = std::fopen("dll_shared.log", "w");
+    trace::get_config().print_timestamp = false;
+    trace::get_config().print_thread = true;
+    
     TRACE_SCOPE();
     
-    std::printf("=== DLL State Sharing Example ===\n");
+    std::printf("=== DLL State Sharing Example (Simplified) ===\n");
+    std::printf("Setup: TRACE_SETUP_DLL_SHARED() - just 1 line!\n");
     std::printf("All traces will be written to dll_shared.log\n\n");
     
     // Call functions from different "DLLs"
@@ -82,7 +86,18 @@ int main() {
     std::printf("\nTraces written to dll_shared.log\n");
     std::printf("All DLLs shared the same trace state!\n");
     
-    // Note: g_trace_init destructor will automatically flush and cleanup
+    // Manual flush before file closure
+    // Note: The RAII guard also flushes, but we do it here to ensure
+    // the file is written before we close it
+    trace::flush_all();
+    
+    if (trace::get_config().out && trace::get_config().out != stdout) {
+        std::fclose(trace::get_config().out);
+        trace::get_config().out = stdout;  // Reset to avoid double-close
+    }
+    
+    std::printf("\n✓ Automatic cleanup will happen on exit via RAII guard\n");
+    
     return 0;
 }
 
