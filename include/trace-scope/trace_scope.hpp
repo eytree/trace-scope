@@ -486,6 +486,56 @@ inline void set_external_state(Config* cfg, Registry* reg) {
 }
 
 /**
+ * @def TRACE_SETUP_DLL_SHARED()
+ * @brief One-line DLL state sharing setup with automatic cleanup (RAII).
+ * 
+ * Creates shared Config and Registry instances, automatically registers them
+ * before any tracing occurs, and flushes all traces on program exit via RAII.
+ * 
+ * This macro simplifies DLL state sharing from 20+ lines of boilerplate to
+ * a single line. The RAII guard ensures automatic cleanup even if exceptions occur.
+ * 
+ * Usage: Add this macro at the start of main() in your main executable.
+ * 
+ * Example:
+ * @code
+ * #include <trace-scope/trace_scope.hpp>
+ * 
+ * int main() {
+ *     TRACE_SETUP_DLL_SHARED();  // One line - automatic setup & cleanup!
+ *     
+ *     // Configure tracing
+ *     trace::config.out = std::fopen("trace.log", "w");
+ *     
+ *     // Use tracing normally across all DLLs
+ *     TRACE_SCOPE();
+ *     call_dll_functions();  // All DLLs share same trace state
+ *     
+ *     return 0;  // Automatic flush on exit via RAII
+ * }
+ * @endcode
+ * 
+ * Benefits over manual setup:
+ * - 1 line instead of 20+
+ * - Automatic cleanup (no manual flush needed)
+ * - Exception-safe (RAII guarantees cleanup)
+ * - Less error-prone
+ * 
+ * Note: For advanced control, you can still use set_external_state() manually.
+ */
+#define TRACE_SETUP_DLL_SHARED() \
+    static trace::Config g_trace_shared_config; \
+    static trace::Registry g_trace_shared_registry; \
+    static struct TraceDllGuard { \
+        TraceDllGuard() { \
+            trace::set_external_state(&g_trace_shared_config, &g_trace_shared_registry); \
+        } \
+        ~TraceDllGuard() { \
+            trace::flush_all(); \
+        } \
+    } g_trace_dll_guard
+
+/**
  * @brief Get the active config instance.
  * 
  * Returns external config if set via set_external_state(),
