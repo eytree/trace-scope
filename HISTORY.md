@@ -6,6 +6,94 @@ This document tracks major features, design decisions, and implementation milest
 
 ## October 19, 2025
 
+### Python Tool Sync - Binary Format v2 + Filtering + Colors
+**Commit:** `4654d33`  
+**Breaking Change:** Binary format version bumped from 1 to 2
+
+**Problem:** Python post-processing tool (`trc_pretty.py`) was out of sync with C++ tracer:
+- No filtering capabilities
+- No color output
+- Missing `color_offset` field for thread-aware colors
+- Limited functionality compared to runtime
+
+**Solution:**
+- Bumped binary format to version 2 with `color_offset` field
+- Complete rewrite of `trc_pretty.py` (~290 lines)
+- Added wildcard pattern matching (matches C++ implementation)
+- Added EventFilter class with full filtering support
+- Added thread-aware ANSI color output
+- Added comprehensive command-line options
+
+**Binary Format Changes:**
+- Version 1: `type(1) + tid(4) + ts_ns(8) + depth(4) + dur_ns(8) + strings + line(4)`
+- Version 2: `type(1) + tid(4) + color_offset(1) + ts_ns(8) + depth(4) + dur_ns(8) + strings + line(4)`
+- Python tool supports both versions (backward compatible parsing)
+
+**Python Tool Features:**
+```bash
+# Thread-aware colors
+python trc_pretty.py trace.bin --color
+
+# Function filtering
+python trc_pretty.py trace.bin --filter-function "core_*" --exclude-function "*_test"
+
+# File filtering
+python trc_pretty.py trace.bin --filter-file "src/core/*" --exclude-file "*/test/*"
+
+# Thread filtering
+python trc_pretty.py trace.bin --filter-thread 0x1234 --exclude-thread 0x5678
+
+# Depth limiting
+python trc_pretty.py trace.bin --max-depth 10
+
+# Complex combinations
+python trc_pretty.py trace.bin --color --max-depth 8 \
+    --filter-function "my_namespace::*" \
+    --exclude-function "debug_*"
+```
+
+**Design Decisions:**
+- **Why rewrite vs patch?** Cleaner architecture, better maintainability
+- **Why argparse?** Standard Python library, comprehensive option handling
+- **Why match C++ filtering?** Consistent behavior between runtime and post-processing
+- **Why support version 1?** Graceful handling of old trace files (color_offset defaults to 0)
+
+**Implementation:**
+- `wildcard_match()` - Converts `*` wildcards to regex (same logic as C++)
+- `EventFilter` class - Matches C++ filter logic exactly (exclude wins, depth check, etc.)
+- `get_color()` - Thread-aware ANSI colors using `(depth + color_offset) % 8`
+- `process_trace()` - Main loop with filter application and statistics
+
+**Testing:**
+- Created `test_trc_pretty.py` with 7 comprehensive tests
+- All tests pass: wildcard matching, function filters, file filters, thread filters, exclude priority
+- Created `test_python_tool.cpp` to generate test binaries
+- Verified filtering, colors, and statistics work correctly
+- Tested with version 2 binaries (color_offset included)
+
+**Statistics Output:**
+```
+# Binary format version: 2
+# Processed 100 events, displayed 45
+# Filtered out 55 events (55.0%)
+```
+
+**Files:**
+- `include/trace-scope/trace_scope.hpp` (+16 lines) - Binary format v2, updated comments
+- `tools/trc_pretty.py` (rewrite, +185 lines, -92 old) - Complete feature parity
+- `tools/test_trc_pretty.py` (145 lines) - Comprehensive testing
+- `examples/test_python_tool.cpp` (50 lines) - Test binary generator
+- `README.md` (+55 lines) - Python tool documentation with options table
+
+**Benefits:**
+- Python tool now feature-complete with C++ runtime
+- Post-process existing traces with different filters
+- Thread-aware colors match runtime output exactly
+- Easy integration into CI/analysis pipelines
+- No need to re-run programs to apply different filters
+
+---
+
 ### Thread-Aware Color Coding
 **Commit:** `89a6b86`
 

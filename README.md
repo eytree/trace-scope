@@ -592,27 +592,73 @@ For compact storage and post-processing:
 trace::dump_binary("trace.bin");
 ```
 
-### Python Pretty-Printer
+### Python Post-Processing Tool
 
-The included `tools/trc_pretty.py` tool parses and displays binary trace files:
-
-```bash
-python tools/trc_pretty.py trace.bin
-```
+The `tools/trc_pretty.py` tool provides powerful post-processing of binary trace dumps with full filtering and coloring support.
 
 **Features:**
-- Parses TRCLOG10 binary format
-- Auto-scaling duration units (ns/us/ms/s)
-- Visual indent markers (`|`) for call depth
-- Timestamps and thread IDs
-- Full file paths and line numbers
+- ✅ Thread-aware ANSI color output (matches runtime colors)
+- ✅ Wildcard filtering (function, file, depth, thread)
+- ✅ Include/exclude filter lists (exclude wins)
+- ✅ Binary format versions 1 and 2 support
+- ✅ Auto-scaling duration units (ns/us/ms/s)
+- ✅ Visual indent markers for call depth
 
-**Output format:**
+**Basic Usage:**
+```bash
+# Display trace
+python tools/trc_pretty.py trace.bin
+
+# With thread-aware colors
+python tools/trc_pretty.py trace.bin --color
+
+# Filter to specific functions
+python tools/trc_pretty.py trace.bin --filter-function "core_*"
+
+# Exclude test functions
+python tools/trc_pretty.py trace.bin --exclude-function "*_test" --exclude-function "debug_*"
+
+# Limit depth
+python tools/trc_pretty.py trace.bin --max-depth 10
+
+# Filter by thread ID
+python tools/trc_pretty.py trace.bin --filter-thread 0x1234
+
+# Complex filtering with colors
+python tools/trc_pretty.py trace.bin --color --max-depth 8 \
+    --filter-function "my_namespace::*" \
+    --exclude-function "debug_*" \
+    --exclude-file "*/test/*"
 ```
-[timestamp] (thread_id) | | -> function_name (file:line)
-[timestamp] (thread_id) | | | - message text (file:line)
-[timestamp] (thread_id) | | <- function_name  [duration] (file:line)
+
+**Command-Line Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--color` | Enable thread-aware ANSI colors |
+| `--filter-function PATTERN` | Include functions matching pattern (wildcard `*`) |
+| `--exclude-function PATTERN` | Exclude functions matching pattern |
+| `--filter-file PATTERN` | Include files matching pattern |
+| `--exclude-file PATTERN` | Exclude files matching pattern |
+| `--filter-thread TID` | Include specific thread IDs (hex: 0x1234 or decimal) |
+| `--exclude-thread TID` | Exclude specific thread IDs |
+| `--max-depth N` | Maximum call depth to display (-1 = unlimited) |
+| `--no-timing` | Hide duration timing |
+| `--timestamp` | Show absolute timestamps |
+
+**Output Format:**
 ```
+(thread_id) | | -> function_name (file:line)
+(thread_id) | | | - message text (file:line)
+(thread_id) | | <- function_name  [duration] (file:line)
+```
+
+**Benefits:**
+- Post-process traces with different filters without re-running program
+- Apply filters to existing binary dumps
+- Analyze specific subsystems or threads
+- Same filtering logic as runtime (consistent behavior)
+- Thread-aware colors match runtime output exactly
 
 **Binary Format Validation:**
 

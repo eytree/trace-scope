@@ -1481,10 +1481,19 @@ inline void check_auto_flush_on_scope_exit(int final_depth) {
  * @brief Dump all trace events to a compact binary file.
  * 
  * Binary format starts with "TRCLOG10" header followed by version info.
- * Each event is serialized with its type, thread ID, timestamp, depth,
- * duration, and length-prefixed strings (file, func, msg).
+ * 
+ * Version 2 format (current):
+ *   Each event: type(1) + tid(4) + color_offset(1) + ts_ns(8) + depth(4) + 
+ *               dur_ns(8) + file_len(2) + file_str + func_len(2) + func_str +
+ *               msg_len(2) + msg_str + line(4)
+ * 
+ * Version 1 format (legacy, no color_offset):
+ *   Each event: type(1) + tid(4) + ts_ns(8) + depth(4) + dur_ns(8) +
+ *               file_len(2) + file_str + func_len(2) + func_str +
+ *               msg_len(2) + msg_str + line(4)
  * 
  * Use tools/trc_pretty.py to pretty-print the binary file.
+ * The Python tool supports both version 1 and 2 formats.
  * 
  * @param path Output file path
  * @return true on success, false on failure
@@ -1500,7 +1509,7 @@ inline bool dump_binary(const char* path) {
     auto ws  = [&](const char* s, uint16_t n){ if (n) std::fwrite(s,1,n,f); };
 
     std::fwrite("TRCLOG10",1,8,f);
-    w32(1); // version
+    w32(2); // version (bumped to 2 for color_offset field)
     w32(0);
 
     std::vector<Ring*> snapshot;
@@ -1527,6 +1536,7 @@ inline bool dump_binary(const char* path) {
 
                 w8((uint8_t)e.type);
                 w32(e.tid);
+                w8(e.color_offset);  // Added in version 2 for thread-aware colors
                 w64(e.ts_ns);
                 w32((uint32_t)e.depth);
                 w64(e.dur_ns);
