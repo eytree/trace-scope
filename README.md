@@ -628,15 +628,28 @@ All tests run cleanly with **zero external dependencies** - just C++17 standard 
 
 ## Roadmap
 
-### Immediate Priority (Next Release)
+### ✅ Recently Completed
 
-**Hybrid Buffered + Immediate Mode**
-- Support simultaneous buffered and immediate output
-- Auto-flush ring buffer when near capacity (e.g., 90% full)
-- Prevents data loss while maintaining performance
-- Optional file rotation when buffer wraps
+**Hybrid Buffered + Immediate Mode** *(Implemented)*
+- ✅ Simultaneous buffered and immediate output
+- ✅ Auto-flush ring buffer when near capacity (configurable threshold)
+- ✅ Separate output streams for immediate vs buffered
+- ✅ Prevents data loss while maintaining performance
+- See `example_hybrid.cpp` for demonstration
 
-**Use case:** Long-running processes where you want both real-time visibility and complete history without data loss.
+**Double-Buffering Mode** *(Implemented)*
+- ✅ Optional double-buffering for high-frequency tracing
+- ✅ Eliminates race conditions during flush operations
+- ✅ Safe concurrent write/flush operations
+- ✅ Runtime configurable via `trace::config.use_double_buffering`
+- See `example_double_buffer.cpp` and double-buffering section above
+
+**Comprehensive Test Framework** *(Implemented)*
+- ✅ Lightweight, zero-dependency test framework (`test_framework.hpp`)
+- ✅ Selective test execution via command-line filtering
+- ✅ 28 tests covering all functionality
+- ✅ Rich assertion macros and clear reporting
+- See Development & Testing section above
 
 ### Near-Term Features
 
