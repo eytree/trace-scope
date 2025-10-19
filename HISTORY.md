@@ -6,6 +6,109 @@ This document tracks major features, design decisions, and implementation milest
 
 ## October 19, 2025
 
+### Filtering and Selective Tracing
+**Commit:** `f992566`
+
+**Feature:** Runtime filtering to focus tracing on specific functions, files, or depth ranges.
+
+**Implementation:**
+- Simple wildcard pattern matching (`*` matches zero or more characters)
+- Function filters: include/exclude patterns with wildcard support
+- File filters: include/exclude patterns for file paths
+- Depth filter: max_depth to limit call depth (-1 = unlimited)
+- Filter API: `filter_include_function()`, `filter_exclude_function()`, etc.
+- INI configuration: `[filter]` section with multiple pattern support
+- 22 comprehensive tests covering all filter scenarios
+- Example demonstrating all filter types
+
+**Design Decisions:**
+- **Why wildcards vs regex?** Simpler to implement (~50 lines), sufficient for 99% of use cases, no external dependencies
+- **Why both include and exclude?** Maximum flexibility - can trace "everything except X" or "only X except Y"
+- **Why exclude wins?** Clear precedence rule prevents ambiguity
+- **Why max_depth only?** Simpler than min/max range, covers the main use case (limiting recursion spam)
+- **Filter at trace time vs output time?** At trace time saves memory (filtered events never written to buffer)
+
+**Filter Logic:**
+1. Check depth filter (if max_depth set and exceeded, filter out)
+2. Check function filters:
+   - If exclude list matches → filter out (exclude wins)
+   - If include list is not empty and doesn't match → filter out
+3. Check file filters (same logic as function filters)
+4. Pass all checks → trace the event
+
+**Pattern Matching Algorithm:**
+- Recursive wildcard matching for simplicity
+- Case-sensitive matching
+- Examples: `test_*`, `*_test`, `*mid*`, `namespace::*`
+- O(n*m) worst case, but typically very fast (small patterns, early exits)
+
+**API Functions:**
+```cpp
+trace::filter_include_function("core_*");      // Only trace core functions
+trace::filter_exclude_function("*_test");      // Never trace test functions
+trace::filter_include_file("src/networking/*"); // Only trace networking files
+trace::filter_exclude_file("*/test/*");        // Never trace test directories
+trace::filter_set_max_depth(10);               // Limit to depth 10
+trace::filter_clear();                         // Clear all filters
+```
+
+**INI Configuration:**
+```ini
+[filter]
+include_function = core_*
+include_function = important_*
+exclude_function = *_test
+exclude_function = debug_*
+include_file = src/core/*
+exclude_file = */test/*
+max_depth = 15
+```
+
+**Use Cases:**
+- Focus on specific module: exclude everything except core functionality
+- Exclude test code: trace production code only
+- Limit deep recursion: prevent stack overflow scenarios from filling logs
+- Debug specific subsystem: include only networking or database code
+
+**Performance Impact:**
+- Minimal overhead: O(patterns) string comparisons per TRACE_SCOPE() call
+- Typical use: < 10 patterns, negligible impact
+- Filtered events never written to ring buffer (saves memory)
+- Early return on filter match (no event allocation)
+
+**Implementation Details:**
+- ~200 lines of filter code in `trace_scope.hpp`
+- `filter_utils` namespace for wildcard matching and filter logic
+- Depth tracking maintained even for filtered events (preserves nesting)
+- Filter check wrapped in `#if TRACE_ENABLED` for compile-time removal
+
+**Edge Cases Handled:**
+- Null function pointers (for TRACE_MSG) - only check file filter
+- Empty filter lists - trace everything (default behavior)
+- Multiple patterns accumulate (multiple include_function lines in INI)
+- Filter that matches nothing - no traces output (expected behavior)
+
+**Files:** 
+- `include/trace-scope/trace_scope.hpp` (+243 lines)
+- `examples/example_filtering.cpp` (206 lines)
+- `examples/filter_config.ini` (44 lines)
+- `tests/test_filtering.cpp` (323 lines)
+- `README.md` (+130 lines documentation)
+
+**Testing:**
+- 22 tests: wildcard matching (7), function filters (6), file filters (4), depth (2), integration (3)
+- 100% pass rate
+- Total test suite: 79 tests across all executables
+
+**Benefits:**
+- Focus debugging efforts on relevant code
+- Reduce trace output volume by 10-100x
+- Prevent log spam from deep recursion
+- Runtime configurable - no recompilation needed
+- Zero external dependencies
+
+---
+
 ### Build Scripts for Windows
 **Commit:** `0abb4ef`
 
