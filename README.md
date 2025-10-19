@@ -185,6 +185,85 @@ void baz() {
 - Works with all marker styles (ASCII, Unicode, box-drawing)
 - See `examples/example_colors.cpp` for a demonstration
 
+### Configuration File Support
+
+Instead of hardcoding configuration in your source code, you can load all settings from an INI file:
+
+```cpp
+#include <trace-scope/trace_scope.hpp>
+
+int main() {
+    // Load configuration from INI file
+    trace::load_config("trace.conf");
+    
+    // Optional: Override specific settings programmatically
+    trace::config.print_timestamp = true;
+    
+    // Use tracing as configured
+    TRACE_SCOPE();
+    // ...
+}
+```
+
+**Example `trace.conf`:**
+```ini
+[output]
+file = trace.log
+
+[display]
+print_timing = true
+print_timestamp = false
+print_thread = true
+colorize_depth = false
+
+[formatting]
+filename_width = 20
+line_width = 5
+function_width = 20
+
+[markers]
+indent_marker = | 
+enter_marker = -> 
+exit_marker = <- 
+message_marker = - 
+
+[modes]
+immediate_mode = false
+hybrid_mode = false
+auto_flush_at_exit = false
+use_double_buffering = false
+auto_flush_threshold = 0.9
+```
+
+**Benefits:**
+- ✅ **Separate config from code** - change settings without recompilation
+- ✅ **Version control friendly** - commit configuration with your project
+- ✅ **Team collaboration** - share trace settings easily
+- ✅ **Environment-specific** - different configs for dev/test/prod
+- ✅ **Zero dependencies** - built-in INI parser (~200 lines)
+
+**INI File Format:**
+- Sections: `[section_name]`
+- Key-value pairs: `key = value`
+- Comments: Lines starting with `#` or `;`
+- Inline comments: `key = value  # comment`
+- Quoted strings: `marker = "| "` (preserves spaces)
+- Boolean values: `true`/`false`, `1`/`0`, `on`/`off`, `yes`/`no` (case-insensitive)
+
+**For DLL projects:**
+```cpp
+int main() {
+    // One line - DLL setup + config loading!
+    TRACE_SETUP_DLL_SHARED_WITH_CONFIG("trace.conf");
+    
+    // Use tracing normally
+    TRACE_SCOPE();
+    // ...
+}
+```
+
+See `examples/trace_config.ini` for a complete annotated example and `examples/example_config_file.cpp` for demonstration.
+
 ## Immediate Mode
 
 For long-running processes or real-time logging, enable immediate mode:
@@ -253,6 +332,21 @@ int main() {
     trace::get_config().out = std::fopen("trace.log", "w");
     
     // Use tracing normally - all DLLs share the same state!
+    TRACE_SCOPE();
+    call_dll_functions();
+    
+    return 0;  // Automatic flush via RAII
+}
+```
+
+**With configuration file:**
+
+```cpp
+int main() {
+    // Even simpler - DLL setup + config loading in one line!
+    TRACE_SETUP_DLL_SHARED_WITH_CONFIG("trace.conf");
+    
+    // Use tracing normally - configured from file
     TRACE_SCOPE();
     call_dll_functions();
     

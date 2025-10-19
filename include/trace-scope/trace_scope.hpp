@@ -87,6 +87,88 @@
 
 namespace trace {
 
+// Forward declarations
+struct Config;
+
+/**
+ * @brief INI file parser utilities for configuration loading.
+ * 
+ * Simple, dependency-free INI parser supporting:
+ * - Comments (# and ;)
+ * - Sections [section_name]
+ * - Key-value pairs (key = value)
+ * - Boolean, integer, float, and string values
+ * - Quoted and unquoted strings
+ */
+namespace ini_parser {
+
+/**
+ * @brief Trim whitespace from both ends of a string.
+ */
+inline std::string trim(const std::string& str) {
+    size_t start = 0;
+    size_t end = str.length();
+    
+    while (start < end && std::isspace((unsigned char)str[start])) ++start;
+    while (end > start && std::isspace((unsigned char)str[end - 1])) --end;
+    
+    return str.substr(start, end - start);
+}
+
+/**
+ * @brief Parse boolean value from string.
+ * 
+ * Accepts: true/false, 1/0, on/off, yes/no (case-insensitive)
+ */
+inline bool parse_bool(const std::string& value) {
+    std::string v = trim(value);
+    
+    // Convert to lowercase for case-insensitive comparison
+    for (char& c : v) {
+        c = (char)std::tolower((unsigned char)c);
+    }
+    
+    if (v == "true" || v == "1" || v == "on" || v == "yes") return true;
+    if (v == "false" || v == "0" || v == "off" || v == "no") return false;
+    
+    return false;  // Default to false on parse error
+}
+
+/**
+ * @brief Parse integer value from string.
+ */
+inline int parse_int(const std::string& value) {
+    try {
+        return std::stoi(trim(value));
+    } catch (...) {
+        return 0;
+    }
+}
+
+/**
+ * @brief Parse float value from string.
+ */
+inline float parse_float(const std::string& value) {
+    try {
+        return std::stof(trim(value));
+    } catch (...) {
+        return 0.0f;
+    }
+}
+
+/**
+ * @brief Remove quotes from string if present.
+ */
+inline std::string unquote(const std::string& str) {
+    std::string s = trim(str);
+    if (s.length() >= 2 && s[0] == '"' && s[s.length()-1] == '"') {
+        return s.substr(1, s.length() - 2);
+    }
+    return s;
+}
+
+} // namespace ini_parser
+
 /**
  * @brief Global configuration for trace output formatting and behavior.
  * 
@@ -134,6 +216,28 @@ struct Config {
                                         ///< Pros: Safe concurrent write/flush, zero disruption, better for high-frequency tracing
                                         ///< Cons: 2x memory per thread (~4MB default), slightly more complex
                                         ///< Use when: Generating millions of events/sec with frequent flushing
+    
+    /**
+     * @brief Load configuration from INI file.
+     * 
+     * Parses an INI file and applies settings to this Config instance.
+     * Supports sections: [output], [display], [formatting], [markers], [modes]
+     * 
+     * @param path Path to INI file (relative or absolute)
+     * @return true on success, false if file not found or critical error
+     * 
+     * Example INI format:
+     * @code
+     * [display]
+     * print_timing = true
+     * print_timestamp = false
+     * 
+     * [markers]
+     * indent_marker = | 
+     * enter_marker = -> 
+     * @endcode
+     */
+    inline bool load_from_file(const char* path);
 };
 TRACE_SCOPE_VAR Config config;
 
@@ -523,17 +627,28 @@ inline void set_external_state(Config* cfg, Registry* reg) {
  * 
  * Note: For advanced control, you can still use set_external_state() manually.
  */
-#define TRACE_SETUP_DLL_SHARED() \
+#define TRACE_SETUP_DLL_SHARED_WITH_CONFIG(config_file) \
     static trace::Config g_trace_shared_config; \
     static trace::Registry g_trace_shared_registry; \
     static struct TraceDllGuard { \
         TraceDllGuard() { \
             trace::set_external_state(&g_trace_shared_config, &g_trace_shared_registry); \
+            if (config_file && config_file[0]) { \
+                g_trace_shared_config.load_from_file(config_file); \
+            } \
         } \
         ~TraceDllGuard() { \
             trace::flush_all(); \
         } \
     } g_trace_dll_guard
+
+/**
+ * @def TRACE_SETUP_DLL_SHARED()
+ * @brief DLL state sharing setup without config file (backward compatible).
+ * 
+ * Same as TRACE_SETUP_DLL_SHARED_WITH_CONFIG(nullptr).
+ */
+#define TRACE_SETUP_DLL_SHARED() TRACE_SETUP_DLL_SHARED_WITH_CONFIG(nullptr)
 
 /**
  * @brief Get the active config instance.
@@ -545,6 +660,139 @@ inline void set_external_state(Config* cfg, Registry* reg) {
  */
 inline Config& get_config() {
     return g_external_config ? *g_external_config : config;
+}
+
+/**
+ * @brief Config::load_from_file() implementation.
+ * 
+ * Parses INI file and applies configuration settings.
+ */
+inline bool Config::load_from_file(const char* path) {
+    FILE* f = std::fopen(path, "r");
+    if (!f) {
+        std::fprintf(stderr, "trace-scope: Warning: Could not open config file: %s\n", path);
+        return false;
+    }
+    
+    std::string current_section;
+    char line_buf[512];
+    int line_num = 0;
+    
+    while (std::fgets(line_buf, sizeof(line_buf), f)) {
+        ++line_num;
+        std::string line = ini_parser::trim(line_buf);
+        
+        // Skip empty lines and comments
+        if (line.empty() || line[0] == '#' || line[0] == ';') {
+            continue;
+        }
+        
+        // Parse section header [section_name]
+        if (line[0] == '[' && line[line.length()-1] == ']') {
+            current_section = line.substr(1, line.length() - 2);
+            current_section = ini_parser::trim(current_section);
+            continue;
+        }
+        
+        // Parse key = value
+        size_t eq_pos = line.find('=');
+        if (eq_pos == std::string::npos) {
+            std::fprintf(stderr, "trace-scope: Warning: Invalid line in %s:%d (no '=')\n", path, line_num);
+            continue;
+        }
+        
+        std::string key = ini_parser::trim(line.substr(0, eq_pos));
+        std::string value = ini_parser::trim(line.substr(eq_pos + 1));
+        
+        // Remove inline comments from value
+        size_t comment_pos = value.find('#');
+        if (comment_pos == std::string::npos) {
+            comment_pos = value.find(';');
+        }
+        if (comment_pos != std::string::npos) {
+            value = ini_parser::trim(value.substr(0, comment_pos));
+        }
+        
+        // Apply configuration based on section and key
+        if (current_section == "output") {
+            if (key == "file") {
+                FILE* new_out = std::fopen(ini_parser::unquote(value).c_str(), "w");
+                if (new_out) {
+                    if (out && out != stdout) std::fclose(out);
+                    out = new_out;
+                }
+            }
+            else if (key == "immediate_file") {
+                FILE* new_imm = std::fopen(ini_parser::unquote(value).c_str(), "w");
+                if (new_imm) {
+                    if (immediate_out && immediate_out != stdout) std::fclose(immediate_out);
+                    immediate_out = new_imm;
+                }
+            }
+        }
+        else if (current_section == "display") {
+            if (key == "print_timing") print_timing = ini_parser::parse_bool(value);
+            else if (key == "print_timestamp") print_timestamp = ini_parser::parse_bool(value);
+            else if (key == "print_thread") print_thread = ini_parser::parse_bool(value);
+            else if (key == "colorize_depth") colorize_depth = ini_parser::parse_bool(value);
+            else if (key == "include_file_line") include_file_line = ini_parser::parse_bool(value);
+            else if (key == "include_filename") include_filename = ini_parser::parse_bool(value);
+            else if (key == "include_function_name") include_function_name = ini_parser::parse_bool(value);
+            else if (key == "show_full_path") show_full_path = ini_parser::parse_bool(value);
+        }
+        else if (current_section == "formatting") {
+            if (key == "filename_width") filename_width = ini_parser::parse_int(value);
+            else if (key == "line_width") line_width = ini_parser::parse_int(value);
+            else if (key == "function_width") function_width = ini_parser::parse_int(value);
+        }
+        else if (current_section == "markers") {
+            if (key == "show_indent_markers") show_indent_markers = ini_parser::parse_bool(value);
+            else if (key == "indent_marker") {
+                static std::string s_indent = ini_parser::unquote(value);
+                indent_marker = s_indent.c_str();
+            }
+            else if (key == "enter_marker") {
+                static std::string s_enter = ini_parser::unquote(value);
+                enter_marker = s_enter.c_str();
+            }
+            else if (key == "exit_marker") {
+                static std::string s_exit = ini_parser::unquote(value);
+                exit_marker = s_exit.c_str();
+            }
+            else if (key == "message_marker") {
+                static std::string s_msg = ini_parser::unquote(value);
+                msg_marker = s_msg.c_str();
+            }
+        }
+        else if (current_section == "modes") {
+            if (key == "immediate_mode") immediate_mode = ini_parser::parse_bool(value);
+            else if (key == "hybrid_mode") hybrid_mode = ini_parser::parse_bool(value);
+            else if (key == "auto_flush_at_exit") auto_flush_at_exit = ini_parser::parse_bool(value);
+            else if (key == "use_double_buffering") use_double_buffering = ini_parser::parse_bool(value);
+            else if (key == "auto_flush_threshold") auto_flush_threshold = ini_parser::parse_float(value);
+        }
+    }
+    
+    std::fclose(f);
+    return true;
+}
+
+/**
+ * @brief Load configuration from file into global config.
+ * 
+ * Convenience function that calls get_config().load_from_file().
+ * 
+ * @param path Path to INI file
+ * @return true on success, false if file not found
+ * 
+ * Example:
+ * @code
+ * trace::load_config("trace.conf");
+ * TRACE_SCOPE();  // Now configured from file
+ * @endcode
+ */
+inline bool load_config(const char* path) {
+    return get_config().load_from_file(path);
 }
 
 #if defined(TRACE_SCOPE_SHARED)
