@@ -197,6 +197,17 @@ struct Ring {
     bool        registered = false;                 ///< Whether this ring is registered globally
     uint64_t    start_stack[TRACE_DEPTH_MAX];       ///< Start timestamp per depth (for duration calculation)
     const char* func_stack[TRACE_DEPTH_MAX];        ///< Function name per depth (for message context)
+    
+    /**
+     * @brief Destructor: Unregister from global registry.
+     * 
+     * When a thread exits, its thread_local Ring is destroyed. We remove it
+     * from the global registry to prevent flush_all() from accessing freed memory.
+     * 
+     * Note: Any unflushed events in this ring will be lost. Applications should
+     * call flush_all() or enable auto_flush_at_exit before threads terminate.
+     */
+    inline ~Ring();  // Defined after registry() declaration
 
     /**
      * @brief Check if ring buffer should be auto-flushed (hybrid mode).
@@ -432,6 +443,15 @@ struct Registry {
         std::lock_guard<std::mutex> lock(mtx);
         rings.push_back(r);
     }
+    
+    /**
+     * @brief Unregister a ring buffer (called from Ring destructor).
+     * @param r Pointer to ring buffer to remove
+     */
+    inline void remove(Ring* r) {
+        std::lock_guard<std::mutex> lock(mtx);
+        rings.erase(std::remove(rings.begin(), rings.end(), r), rings.end());
+    }
 };
 
 /**
@@ -511,6 +531,18 @@ inline Registry& registry() {
     return r;
 }
 #endif
+
+/**
+ * @brief Ring destructor implementation.
+ * 
+ * Defined here after registry() is available.
+ */
+inline Ring::~Ring() {
+    if (registered) {
+        registry().remove(this);
+        registered = false;
+    }
+}
 
 /**
  * @brief Hash the current thread ID to a printable 32-bit value.
