@@ -9,17 +9,17 @@
  */
 
 #include <trace-scope/trace_scope.hpp>
+#include "test_framework.hpp"
 #include <thread>
 #include <chrono>
 #include <atomic>
-#include <cassert>
 #include <cstdio>
 #include <cstring>
 
 /**
  * @brief Test 1: Functional test - verify basic double-buffer operation.
  */
-void test_functional() {
+TEST(functional) {
     std::printf("=== Test 1: Functional Test ===\n");
     
     // Enable double-buffering
@@ -59,7 +59,7 @@ void test_functional() {
 /**
  * @brief Test 2: Event ordering - verify events maintain correct order.
  */
-void test_event_ordering() {
+TEST(event_ordering) {
     std::printf("=== Test 2: Event Ordering Test ===\n");
     
     trace::config.use_double_buffering = true;
@@ -114,7 +114,9 @@ void stress_flusher() {
     }
 }
 
-void test_stress() {
+// NOTE: Stress test is optional - can take 5-10 seconds
+// Uncomment in main() or run with: test_double_buffer stress
+TEST(stress) {
     std::printf("=== Test 3: Stress Test ===\n");
     
     // Test both single and double-buffer modes
@@ -180,7 +182,7 @@ void test_stress() {
 /**
  * @brief Test 4: Single-threaded correctness - verify no events lost.
  */
-void test_single_thread_correctness() {
+TEST(single_thread_correctness) {
     std::printf("=== Test 4: Single-Thread Correctness ===\n");
     
     trace::config.use_double_buffering = true;
@@ -206,7 +208,7 @@ void test_single_thread_correctness() {
     
     // Verify the log file contains all events
     FILE* f = std::fopen("test_double_buffer_correctness.log", "r");
-    assert(f && "Failed to open correctness log");
+    TEST_ASSERT(f != nullptr, "Failed to open correctness log");
     
     int event_count = 0;
     char line[256];
@@ -232,7 +234,7 @@ void test_single_thread_correctness() {
 /**
  * @brief Test 5: Buffer swap verification.
  */
-void test_buffer_swap() {
+TEST(buffer_swap) {
     std::printf("=== Test 5: Buffer Swap Verification ===\n");
     
     trace::config.use_double_buffering = true;
@@ -263,7 +265,7 @@ void test_buffer_swap() {
     
     // Verify the log contains all 3 messages
     FILE* f = std::fopen("test_double_buffer_swap.log", "r");
-    assert(f && "Failed to open swap log");
+    TEST_ASSERT(f != nullptr, "Failed to open swap log");
     
     bool found[3] = {false, false, false};
     char line[256];
@@ -274,7 +276,7 @@ void test_buffer_swap() {
     }
     std::fclose(f);
     
-    assert(found[0] && found[1] && found[2] && "Buffer swap test failed - messages missing");
+    TEST_ASSERT(found[0] && found[1] && found[2], "Buffer swap test failed - messages missing");
     
     std::printf("  ✓ Buffer swap verification passed\n\n");
 }
@@ -282,25 +284,7 @@ void test_buffer_swap() {
 /**
  * @brief Main test runner.
  */
-int main() {
-    std::printf("========================================\n");
-    std::printf("   Double-Buffering Test Suite\n");
-    std::printf("========================================\n\n");
-    
-    test_functional();
-    test_event_ordering();
-    test_buffer_swap();
-    test_single_thread_correctness();
-    
-    // NOTE: Stress test commented out - works but can take very long with tight loop
-    // The functional tests above verify double-buffering correctness
-    // Uncomment test_stress() to run full stress test (may take 5-10 seconds)
-    // test_stress();
-    
-    std::printf("========================================\n");
-    std::printf("   All Tests Passed!\n");
-    std::printf("========================================\n");
-    
-    return 0;
+int main(int argc, char** argv) {
+    return run_tests(argc, argv);
 }
 

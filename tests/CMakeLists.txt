@@ -1,5 +1,9 @@
 # Tests for trace-scope library
 
+# Test framework self-test (tests the test framework itself)
+add_executable(test_framework_test test_framework_test.cpp)
+# No trace_scope dependency - tests the framework in isolation
+
 add_executable(test_trace test_trace.cpp)
 target_link_libraries(test_trace PRIVATE trace_scope)
 
