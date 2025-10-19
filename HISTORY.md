@@ -6,6 +6,63 @@ This document tracks major features, design decisions, and implementation milest
 
 ## October 19, 2025
 
+### Thread-Aware Color Coding
+**Commit:** `89a6b86`
+
+**Feature:** Automatic thread-aware color offsetting for multi-threaded tracing visualization.
+
+**Problem:** In multi-threaded applications, all threads used the same color scheme based only on depth, making it hard to visually distinguish which thread produced each trace line.
+
+**Solution:**
+- Added `color_offset` field to Ring struct (calculated as `tid % 8`)
+- Added `color_offset` field to Event struct (1 byte)
+- Updated print_event() to use `(depth + color_offset) % 8` for color selection
+- Simplified color scheme from 256-color gradient to 8-color system
+
+**Implementation:**
+- Ring constructor now calculates thread-specific color offset
+- Each thread gets offset 0-7 based on its thread ID hash
+- Color index = (event depth + thread offset) % 8
+- Uses 8 standard ANSI colors: Red, Green, Yellow, Blue, Magenta, Cyan, White, Bright Red
+
+**Benefits:**
+- **Visual thread distinction**: Each thread uses a different color pattern
+- **Depth info preserved**: Colors still cycle as depth increases  
+- **Zero runtime overhead**: Offset calculated once per thread in constructor
+- **Automatic**: No configuration needed, works out of the box
+- **Backward compatible**: Old traces read offset as 0 (no offset)
+
+**Example:**
+```
+Main Thread (offset=0):  Red → Green → Yellow → Blue...
+Worker Thread (offset=3): Blue → Magenta → Cyan → White...
+```
+
+**Design Decisions:**
+- **Why 8 colors instead of 256?** Simpler, clearer visual distinction, sufficient for most use cases
+- **Why offset instead of solid color?** Preserves both depth and thread information in one visual
+- **Why store in Event?** Needed for post-flush output and binary format replay
+- **Why tid % 8?** Simple, deterministic, uses all 8 colors evenly
+
+**Performance Impact:**
+- +1 byte per Event struct
+- +1 byte per Ring struct
+- Zero runtime overhead (offset calculated once in Ring constructor)
+- No additional comparisons in hot path
+
+**Files:**
+- `include/trace-scope/trace_scope.hpp` (+18 lines, -21 simplified gradient code)
+- `examples/example_thread_colors.cpp` (100 lines) - multi-threaded demonstration
+- `README.md` (+11 lines, -8 old gradient docs)
+- `examples/CMakeLists.txt` (+3 lines)
+
+**Testing:**
+- All 57 existing tests pass
+- Manual testing with example_thread_colors shows distinct color patterns per thread
+- Verified depth still affects color within each thread
+
+---
+
 ### Filtering and Selective Tracing
 **Commit:** `f992566`
 

@@ -166,40 +166,57 @@ trace::config.msg_marker = ". ";
 trace::config.show_indent_markers = false;  // Use plain whitespace
 ```
 
-### ANSI Color Support
+### ANSI Color Support (Thread-Aware)
 
-For easier visual tracking of call depths, enable ANSI color-coding:
+For easier visual tracking of call depths and threads, enable ANSI color-coding:
 
 ```cpp
 trace::config.colorize_depth = true;  // Enable depth-based coloring
 ```
 
-Each call depth level gets a different color from a smooth 30-color gradient:
-- **Depths 1-8:** Green shades (light to dark green)
-- **Depths 9-12:** Yellow-green transition
-- **Depths 13-18:** Yellow to orange transition
-- **Depths 19-24:** Orange to red transition
-- **Depths 25-30:** Deep red shades
+**Thread-Aware Color Coding:**
 
-The gradient provides up to 30 distinct colors, cycling after that. Colors are chosen to be clearly visible and avoid hard-to-read combinations.
+Each thread automatically gets a unique color offset based on its thread ID, making multi-threaded traces easy to follow:
 
-**Example:**
+- **Thread 1 (offset=0):** Red → Green → Yellow → Blue → Magenta → Cyan → White → Bright Red (cycles)
+- **Thread 2 (offset=3):** Blue → Magenta → Cyan → White → Bright Red → Red → Green → Yellow (cycles)
+- **Thread 3 (offset=5):** Cyan → White → Bright Red → Red → Green → Yellow → Blue → Magenta (cycles)
+
+**Benefits:**
+- Easy visual identification of which thread produced output
+- Depth information still preserved (color changes with nesting)
+- No configuration needed - automatic based on thread ID
+- Makes debugging multi-threaded code significantly easier
+
+**Example (Single-Threaded):**
 ```cpp
 void foo() {
-    TRACE_SCOPE();  // Depth 1 = Light Green
+    TRACE_SCOPE();  // Depth 0 = Red
     bar();
 }
 
 void bar() {
-    TRACE_SCOPE();  // Depth 2 = Green
+    TRACE_SCOPE();  // Depth 1 = Green
     baz();
 }
 
 void baz() {
-    TRACE_SCOPE();  // Depth 3 = Darker Green
-    // ... continues through gradient as depth increases
+    TRACE_SCOPE();  // Depth 2 = Yellow
 }
 ```
+
+**Example (Multi-Threaded):**
+```cpp
+// Main thread
+[0x1234] main()       // Red (offset=0, depth=0)
+[0x1234]   process()  // Green (offset=0, depth=1)
+
+// Worker thread (different color offset)
+[0x5678] worker()     // Yellow (offset=3, depth=0) - Visually distinct!
+[0x5678]   compute()  // Blue (offset=3, depth=1)
+```
+
+See `examples/example_thread_colors.cpp` for a complete demonstration.
 
 **Notes:**
 - Colors only work in ANSI-compatible terminals (most modern terminals)
@@ -947,21 +964,24 @@ All tests run cleanly with **zero external dependencies** - just C++17 standard 
 - ✅ Rich assertion macros and clear reporting
 - See Development & Testing section above
 
-### Near-Term Features
-
-**Filtering & Selective Tracing**
-- Filter by function name patterns (regex)
-- Filter by file/path patterns
-- Filter by depth range
-- Enable/disable tracing dynamically at runtime
-- Thread-specific filtering
+**Filtering & Selective Tracing** *(Implemented)*
+- ✅ Wildcard pattern matching for functions and files
+- ✅ Include/exclude filter lists (exclude wins priority)
+- ✅ Max depth limiting to prevent recursion spam
+- ✅ INI configuration support with `[filter]` section
+- ✅ 22 comprehensive tests, all passing
+- ✅ Runtime configurable - no recompilation needed
+- See Filtering and Selective Tracing section above
 
 **Example:**
 ```cpp
-trace::filter::exclude_functions(".*test.*");  // Skip test functions
-trace::filter::include_files("src/core/.*");   // Only trace core files
-trace::filter::max_depth(10);                  // Limit depth
+trace::filter_include_function("core_*");      // Only trace core functions
+trace::filter_exclude_function("*_test");      // Skip test functions
+trace::filter_include_file("src/networking/*"); // Only trace networking
+trace::filter_set_max_depth(10);               // Limit depth
 ```
+
+### Near-Term Features
 
 **Performance Metrics & Analysis**
 - Per-function call count tracking

@@ -387,6 +387,7 @@ struct Event {
     int         line;                   ///< Source line number
     int         depth;                  ///< Call stack depth (for indentation)
     uint32_t    tid;                    ///< Thread ID (hashed to 32-bit for display)
+    uint8_t     color_offset;           ///< Thread color offset for colorize_depth mode
     EventType   type;                   ///< Event type (Enter/Exit/Msg)
     uint64_t    dur_ns;                 ///< Duration in nanoseconds (Exit only; 0 otherwise)
     char        msg[TRACE_MSG_CAP + 1]; ///< Message text (Msg events only; empty otherwise)
@@ -416,9 +417,16 @@ struct Ring {
 #endif
     int         depth = 0;                          ///< Current call stack depth
     uint32_t    tid   = 0;                          ///< Thread ID (cached)
+    uint8_t     color_offset = 0;                   ///< Thread-specific color offset (0-7) for visual distinction
     bool        registered = false;                 ///< Whether this ring is registered globally
     uint64_t    start_stack[TRACE_DEPTH_MAX];       ///< Start timestamp per depth (for duration calculation)
     const char* func_stack[TRACE_DEPTH_MAX];        ///< Function name per depth (for message context)
+    
+    /**
+     * @brief Constructor: Initialize thread-specific values.
+     * Defined after thread_id_hash() declaration.
+     */
+    Ring();
     
     /**
      * @brief Destructor: Unregister from global registry.
@@ -500,6 +508,7 @@ struct Ring {
         e.file  = file;
         e.line  = line;
         e.tid   = tid;
+        e.color_offset = color_offset;
         e.type  = type;
         e.msg[0]= '\0';
         e.dur_ns= 0;
@@ -1177,6 +1186,14 @@ inline uint32_t thread_id_hash() {
 }
 
 /**
+ * @brief Ring constructor: Initialize thread-specific values.
+ */
+inline Ring::Ring() {
+    tid = thread_id_hash();
+    color_offset = (uint8_t)(tid % 8);  // Assign color offset based on thread ID
+}
+
+/**
  * @brief Get the current thread's ring buffer.
  * 
  * Each thread gets its own ring buffer (thread_local storage). On first call,
@@ -1223,26 +1240,22 @@ inline const char* base_name(const char* p) {
  * @param out Output file stream
  */
 inline void print_event(const Event& e, FILE* out) {
-    // ANSI color for depth-based colorization (gradient: green → yellow → orange → red)
-    if (get_config().colorize_depth && e.depth > 0) {
-        // 256-color gradient for up to 30 levels: green shades → yellow → orange → red
-        // Using ANSI 256-color palette for smooth gradient
-        static const int gradient[] = {
-            // Green shades (depths 1-8)
-            34, 40, 46, 82, 118, 154, 148, 142,
-            // Yellow-green transition (depths 9-12)
-            136, 178, 220, 226,
-            // Yellow to orange (depths 13-18)
-            190, 184, 214, 208, 202, 196,
-            // Orange to red (depths 19-24)
-            202, 196, 160, 124, 88, 52,
-            // Deep red (depths 25-30)
-            88, 124, 160, 196, 196, 196
+    // ANSI color for depth-based colorization with thread-aware offset
+    if (get_config().colorize_depth) {
+        // Combine depth and thread offset for visual distinction
+        // Each thread gets a unique color offset, making multi-threaded traces easier to read
+        int color_idx = (e.depth + e.color_offset) % 8;
+        static const char* colors[] = {
+            "\033[31m",  // Red
+            "\033[32m",  // Green
+            "\033[33m",  // Yellow
+            "\033[34m",  // Blue
+            "\033[35m",  // Magenta
+            "\033[36m",  // Cyan
+            "\033[37m",  // White
+            "\033[91m"   // Bright Red
         };
-        
-        int idx = (e.depth - 1) % 30;  // depth 1-30 maps to index 0-29
-        int color = gradient[idx];
-        std::fprintf(out, "\033[38;5;%dm", color);  // 256-color mode
+        std::fprintf(out, "%s", colors[color_idx]);
     }
     
     if (get_config().print_timestamp) {
@@ -1345,7 +1358,7 @@ inline void print_event(const Event& e, FILE* out) {
     }
     
     // Reset color and add newline
-    if (get_config().colorize_depth && e.depth > 0) {
+    if (get_config().colorize_depth) {
         std::fprintf(out, "\033[0m");  // Reset to default color
     }
     std::fprintf(out, "\n");
