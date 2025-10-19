@@ -49,7 +49,7 @@ TEST(load_valid_config) {
     TEST_ASSERT_EQ(cfg.function_width, 30, "function_width from INI");
     
     // Verify modes
-    TEST_ASSERT_EQ(cfg.hybrid_mode, true, "hybrid_mode from INI");
+    TEST_ASSERT(cfg.mode == trace::TracingMode::Hybrid, "mode from INI should be Hybrid");
     TEST_ASSERT_EQ(cfg.auto_flush_at_exit, true, "auto_flush_at_exit from INI");
     TEST_ASSERT_EQ(cfg.use_double_buffering, true, "use_double_buffering from INI");
     TEST_ASSERT(cfg.auto_flush_threshold > 0.79f && cfg.auto_flush_threshold < 0.81f, 

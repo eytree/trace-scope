@@ -56,7 +56,7 @@ int main() {
     std::printf("  3. Auto-flush when buffer nears 90%% capacity\n\n");
     
     // Configure hybrid mode
-    trace::config.hybrid_mode = true;
+    trace::config.mode = trace::TracingMode::Hybrid;
     trace::config.auto_flush_threshold = 0.8f;  // Flush at 80% full
     
     // Real-time output goes to console (immediate visibility)
