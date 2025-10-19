@@ -40,3 +40,6 @@ cmake_install.cmake
 
 # clangd files
 .cache/
+
+# Python cache
+tools/__pycache__/
