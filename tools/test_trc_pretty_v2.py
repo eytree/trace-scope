@@ -49,7 +49,7 @@ def test_wildcard():
     assert wildcard_match("*::*", "namespace::function"), "*::* should match namespace::function"
     assert wildcard_match("test_*_*", "test_foo_bar"), "test_*_* should match test_foo_bar"
     
-    print("✓ Wildcard matching tests passed")
+    print("[PASS] Wildcard matching tests passed")
 
 
 def test_matches_any():
@@ -67,7 +67,7 @@ def test_matches_any():
     # Empty text
     assert not matches_any("", patterns), "Empty text should not match"
     
-    print("✓ matches_any tests passed")
+    print("[PASS] matches_any tests passed")
 
 
 def test_filtering():
@@ -105,7 +105,7 @@ def test_filtering():
     event['depth'] = 2
     assert filt.should_trace(event), "Should pass again"
     
-    print("✓ EventFilter tests passed")
+    print("[PASS] EventFilter tests passed")
 
 
 def test_file_filtering():
@@ -130,7 +130,7 @@ def test_file_filtering():
     event['file'] = 'lib/other.cpp'
     assert not filt.should_trace(event), "Should not match include list"
     
-    print("✓ File filtering tests passed")
+    print("[PASS] File filtering tests passed")
 
 
 def test_thread_filtering():
@@ -161,7 +161,7 @@ def test_thread_filtering():
     event['tid'] = 0x5678
     assert filt2.should_trace(event), "Should pass (not excluded)"
     
-    print("✓ Thread filtering tests passed")
+    print("[PASS] Thread filtering tests passed")
 
 
 def test_empty_filters():
@@ -179,7 +179,7 @@ def test_empty_filters():
     
     assert filt.should_trace(event), "Empty filters should pass everything"
     
-    print("✓ Empty filter tests passed")
+    print("[PASS] Empty filter tests passed")
 
 
 def test_exclude_wins():
@@ -204,7 +204,7 @@ def test_exclude_wins():
     event['func'] = 'test_bar'
     assert filt.should_trace(event), "Should match include and not excluded"
     
-    print("✓ Exclude priority tests passed")
+    print("[PASS] Exclude priority tests passed")
 
 
 def main():
@@ -228,10 +228,10 @@ def main():
         return 0
         
     except AssertionError as e:
-        print(f"\n✗ Test failed: {e}", file=sys.stderr)
+        print(f"\n[FAIL] Test failed: {e}", file=sys.stderr)
         return 1
     except Exception as e:
-        print(f"\n✗ Unexpected error: {e}", file=sys.stderr)
+        print(f"\n[ERROR] Unexpected error: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc()
         return 1
