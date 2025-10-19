@@ -194,6 +194,90 @@ inline std::string unquote(const std::string& str) {
 } // namespace ini_parser
 
 /**
+ * @brief Filtering utilities for selective tracing.
+ * 
+ * Provides simple wildcard pattern matching for filtering functions and files.
+ */
+namespace filter_utils {
+
+/**
+ * @brief Simple wildcard pattern matching (* matches zero or more characters).
+ * 
+ * @param pattern Pattern with * wildcards (e.g., "test_*", "*_func", "*mid*")
+ * @param text Text to match against
+ * @return true if text matches pattern
+ */
+inline bool wildcard_match(const char* pattern, const char* text) {
+    if (!pattern || !text) return false;
+    
+    // Iterate through pattern and text
+    while (*pattern && *text) {
+        if (*pattern == '*') {
+            // Skip consecutive wildcards
+            while (*pattern == '*') ++pattern;
+            
+            // If wildcard is at end, match succeeds
+            if (!*pattern) return true;
+            
+            // Try matching rest of pattern with each position in text
+            while (*text) {
+                if (wildcard_match(pattern, text)) return true;
+                ++text;
+            }
+            return false;
+        }
+        else if (*pattern == *text) {
+            ++pattern;
+            ++text;
+        }
+        else {
+            return false;
+        }
+    }
+    
+    // Handle trailing wildcards in pattern
+    while (*pattern == '*') ++pattern;
+    
+    return (*pattern == '\0' && *text == '\0');
+}
+
+/**
+ * @brief Check if string matches any pattern in list.
+ * 
+ * @param text Text to match against patterns
+ * @param patterns List of wildcard patterns
+ * @return true if text matches at least one pattern
+ */
+inline bool matches_any(const char* text, const std::vector<std::string>& patterns) {
+    if (!text) return false;
+    if (patterns.empty()) return false;
+    
+    for (const auto& pattern : patterns) {
+        if (wildcard_match(pattern.c_str(), text)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * @brief Check if event should be traced based on current filters.
+ * 
+ * Filter logic:
+ * 1. Check depth filter (if set)
+ * 2. Check function filters (exclude wins over include)
+ * 3. Check file filters (exclude wins over include)
+ * 
+ * @param func Function name (can be null for Msg events)
+ * @param file File path
+ * @param depth Current call depth
+ * @return true if event should be traced, false if filtered out
+ */
+inline bool should_trace(const char* func, const char* file, int depth);
+
+} // namespace filter_utils
+
+/**
  * @brief Global configuration for trace output formatting and behavior.
  * 
  * All settings can be modified at runtime before tracing begins.
@@ -239,6 +323,15 @@ struct Config {
                                         ///< Pros: Safe concurrent write/flush, zero disruption, better for high-frequency tracing
                                         ///< Cons: 2x memory per thread (~4MB default), slightly more complex
                                         ///< Use when: Generating millions of events/sec with frequent flushing
+    
+    // Filtering and selective tracing
+    struct {
+        std::vector<std::string> include_functions;  ///< Include function patterns (empty = trace all)
+        std::vector<std::string> exclude_functions;  ///< Exclude function patterns (higher priority than include)
+        std::vector<std::string> include_files;      ///< Include file patterns (empty = trace all)
+        std::vector<std::string> exclude_files;      ///< Exclude file patterns (higher priority than include)
+        int max_depth = -1;                          ///< Maximum trace depth (-1 = unlimited)
+    } filter;
     
     /**
      * @brief Load configuration from INI file.
@@ -378,6 +471,26 @@ struct Ring {
      * @param line Source line number
      */
     inline void write(EventType type, const char* func, const char* file, int line) {
+#if TRACE_ENABLED
+        // Apply filters - skip if filtered out, but still update depth
+        if (!filter_utils::should_trace(func, file, depth)) {
+            // Must still track depth to maintain correct nesting
+            if (type == EventType::Enter) {
+                int d = depth;
+                if (d < TRACE_DEPTH_MAX) {
+                    const auto now = std::chrono::system_clock::now().time_since_epoch();
+                    uint64_t now_ns = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
+                    start_stack[d] = now_ns;
+                    func_stack[d] = func;
+                }
+                ++depth;
+            }
+            else if (type == EventType::Exit) {
+                depth = std::max(0, depth - 1);
+            }
+            return;  // Filtered out - don't write event
+        }
+        
         const auto now = std::chrono::system_clock::now().time_since_epoch();
         uint64_t now_ns = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
 
@@ -477,6 +590,7 @@ struct Ring {
                 ++wraps[buf_idx];
             }
         }
+#endif
     }
 
     /**
@@ -843,6 +957,23 @@ inline bool Config::load_from_file(const char* path) {
             else if (key == "use_double_buffering") use_double_buffering = ini_parser::parse_bool(value);
             else if (key == "auto_flush_threshold") auto_flush_threshold = ini_parser::parse_float(value);
         }
+        else if (current_section == "filter") {
+            if (key == "include_function") {
+                filter.include_functions.push_back(ini_parser::unquote(value));
+            }
+            else if (key == "exclude_function") {
+                filter.exclude_functions.push_back(ini_parser::unquote(value));
+            }
+            else if (key == "include_file") {
+                filter.include_files.push_back(ini_parser::unquote(value));
+            }
+            else if (key == "exclude_file") {
+                filter.exclude_files.push_back(ini_parser::unquote(value));
+            }
+            else if (key == "max_depth") {
+                filter.max_depth = ini_parser::parse_int(value);
+            }
+        }
     }
     
     std::fclose(f);
@@ -865,6 +996,118 @@ inline bool Config::load_from_file(const char* path) {
  */
 inline bool load_config(const char* path) {
     return get_config().load_from_file(path);
+}
+
+/**
+ * @brief Implementation of should_trace() - must be after get_config() is available.
+ */
+inline bool filter_utils::should_trace(const char* func, const char* file, int depth) {
+    const auto& f = get_config().filter;
+    
+    // Check depth filter
+    if (f.max_depth >= 0 && depth > f.max_depth) {
+        return false;
+    }
+    
+    // Check function filters
+    if (func) {
+        // If exclude list matches, filter out (exclude wins)
+        if (matches_any(func, f.exclude_functions)) {
+            return false;
+        }
+        
+        // If include list is not empty and doesn't match, filter out
+        if (!f.include_functions.empty() && !matches_any(func, f.include_functions)) {
+            return false;
+        }
+    }
+    
+    // Check file filters
+    if (file) {
+        // If exclude list matches, filter out (exclude wins)
+        if (matches_any(file, f.exclude_files)) {
+            return false;
+        }
+        
+        // If include list is not empty and doesn't match, filter out
+        if (!f.include_files.empty() && !matches_any(file, f.include_files)) {
+            return false;
+        }
+    }
+    
+    return true;  // Passed all filters
+}
+
+/**
+ * @brief Add function include pattern (wildcard supported).
+ * 
+ * Only functions matching include patterns will be traced (unless excluded).
+ * Empty include list means include all.
+ * 
+ * @param pattern Wildcard pattern (e.g., "my_namespace::*", "core_*")
+ */
+inline void filter_include_function(const char* pattern) {
+    get_config().filter.include_functions.push_back(pattern);
+}
+
+/**
+ * @brief Add function exclude pattern (wildcard supported).
+ * 
+ * Functions matching exclude patterns will never be traced.
+ * Exclude takes priority over include.
+ * 
+ * @param pattern Wildcard pattern (e.g., "*_test", "debug_*")
+ */
+inline void filter_exclude_function(const char* pattern) {
+    get_config().filter.exclude_functions.push_back(pattern);
+}
+
+/**
+ * @brief Add file include pattern (wildcard supported).
+ * 
+ * Only files matching include patterns will be traced (unless excluded).
+ * Empty include list means include all.
+ * 
+ * @param pattern Wildcard pattern (e.g., "src/core/ *", "*.cpp")
+ */
+inline void filter_include_file(const char* pattern) {
+    get_config().filter.include_files.push_back(pattern);
+}
+
+/**
+ * @brief Add file exclude pattern (wildcard supported).
+ * 
+ * Files matching exclude patterns will never be traced.
+ * Exclude takes priority over include.
+ * 
+ * @param pattern Wildcard pattern (e.g., "* /test/ *", "*_generated.cpp")
+ */
+inline void filter_exclude_file(const char* pattern) {
+    get_config().filter.exclude_files.push_back(pattern);
+}
+
+/**
+ * @brief Set maximum trace depth.
+ * 
+ * Events beyond this depth will be filtered out.
+ * Useful for limiting output from deep recursion.
+ * 
+ * @param depth Maximum depth (-1 = unlimited)
+ */
+inline void filter_set_max_depth(int depth) {
+    get_config().filter.max_depth = depth;
+}
+
+/**
+ * @brief Clear all filters (restore to trace everything).
+ */
+inline void filter_clear() {
+    auto& f = get_config().filter;
+    f.include_functions.clear();
+    f.exclude_functions.clear();
+    f.include_files.clear();
+    f.exclude_files.clear();
+    f.max_depth = -1;
 }
 
 #if defined(TRACE_SCOPE_SHARED)

@@ -22,3 +22,6 @@ endif()
 add_executable(test_config_file test_config_file.cpp)
 target_link_libraries(test_config_file PRIVATE trace_scope)
 
+add_executable(test_filtering test_filtering.cpp)
+target_link_libraries(test_filtering PRIVATE trace_scope)
+
