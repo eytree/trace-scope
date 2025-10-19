@@ -85,6 +85,16 @@
 #define TRACE_DEPTH_MAX 512
 #endif
 
+#ifndef TRACE_DOUBLE_BUFFER
+#define TRACE_DOUBLE_BUFFER 0  // Default: disabled to save memory (~1.2MB per thread)
+#endif
+
+#if TRACE_DOUBLE_BUFFER
+#define TRACE_NUM_BUFFERS 2
+#else
+#define TRACE_NUM_BUFFERS 1
+#endif
+
 namespace trace {
 
 // Forward declarations
@@ -304,11 +314,13 @@ inline void print_event(const Event& e, FILE* out);
  * - Double buffer: Two buffers alternate; write to one while flushing the other
  */
 struct Ring {
-    Event       buf[2][TRACE_RING_CAP];             ///< Circular buffer(s): [0] for single mode, [0]/[1] for double mode
-    uint32_t    head[2] = {0, 0};                   ///< Next write position per buffer
-    uint64_t    wraps[2] = {0, 0};                  ///< Number of buffer wraparounds per buffer
+    Event       buf[TRACE_NUM_BUFFERS][TRACE_RING_CAP];  ///< Circular buffer(s): [0] for single mode, [0]/[1] for double mode
+    uint32_t    head[TRACE_NUM_BUFFERS] = {0};            ///< Next write position per buffer
+    uint64_t    wraps[TRACE_NUM_BUFFERS] = {0};           ///< Number of buffer wraparounds per buffer
+#if TRACE_DOUBLE_BUFFER
     std::atomic<int> active_buf{0};                 ///< Active buffer index for double-buffering (0 or 1)
     std::mutex  flush_mtx;                          ///< Protects buffer swap during flush (double-buffer mode only)
+#endif
     int         depth = 0;                          ///< Current call stack depth
     uint32_t    tid   = 0;                          ///< Thread ID (cached)
     bool        registered = false;                 ///< Whether this ring is registered globally
@@ -340,7 +352,12 @@ struct Ring {
         }
         
         // Check active buffer usage
-        int buf_idx = get_config().use_double_buffering ? active_buf.load(std::memory_order_relaxed) : 0;
+        int buf_idx = 0;
+#if TRACE_DOUBLE_BUFFER
+        if (get_config().use_double_buffering) {
+            buf_idx = active_buf.load(std::memory_order_relaxed);
+        }
+#endif
         float usage = (float)head[buf_idx] / (float)TRACE_RING_CAP;
         if (wraps[buf_idx] > 0) {
             usage = 1.0f;  // Already wrapped = 100% full
@@ -397,7 +414,21 @@ struct Ring {
         // Hybrid mode: buffer AND print immediately, with auto-flush
         if (get_config().mode == TracingMode::Hybrid) {
             // Write to ring buffer first (single or double-buffer mode)
-            int buf_idx = get_config().use_double_buffering ? active_buf.load(std::memory_order_relaxed) : 0;
+            int buf_idx = 0;
+#if TRACE_DOUBLE_BUFFER
+            if (get_config().use_double_buffering) {
+                buf_idx = active_buf.load(std::memory_order_relaxed);
+            }
+#else
+            if (get_config().use_double_buffering) {
+                static bool warned = false;
+                if (!warned) {
+                    std::fprintf(stderr, "trace-scope: ERROR: use_double_buffering=true but not compiled with TRACE_DOUBLE_BUFFER=1\n");
+                    std::fprintf(stderr, "trace-scope: Recompile with -DTRACE_DOUBLE_BUFFER=1 or add before include\n");
+                    warned = true;
+                }
+            }
+#endif
             buf[buf_idx][head[buf_idx]] = e;
             head[buf_idx] = (head[buf_idx] + 1) % TRACE_RING_CAP;
             if (head[buf_idx] == 0) {
@@ -434,7 +465,12 @@ struct Ring {
         }
         // Buffered mode: write to ring buffer only (single or double-buffer mode)
         else {
-            int buf_idx = get_config().use_double_buffering ? active_buf.load(std::memory_order_relaxed) : 0;
+            int buf_idx = 0;
+#if TRACE_DOUBLE_BUFFER
+            if (get_config().use_double_buffering) {
+                buf_idx = active_buf.load(std::memory_order_relaxed);
+            }
+#endif
             buf[buf_idx][head[buf_idx]] = e;
             head[buf_idx] = (head[buf_idx] + 1) % TRACE_RING_CAP;
             if (head[buf_idx] == 0) {
@@ -467,7 +503,12 @@ struct Ring {
         if (get_config().mode == TracingMode::Hybrid) {
             // Write to buffer first (via write())
             write(EventType::Msg, current_func, file, line);
-            int buf_idx = get_config().use_double_buffering ? active_buf.load(std::memory_order_relaxed) : 0;
+            int buf_idx = 0;
+#if TRACE_DOUBLE_BUFFER
+            if (get_config().use_double_buffering) {
+                buf_idx = active_buf.load(std::memory_order_relaxed);
+            }
+#endif
             Event& e = buf[buf_idx][(head[buf_idx] + TRACE_RING_CAP - 1) % TRACE_RING_CAP];
             
             // Format the message
@@ -523,7 +564,12 @@ struct Ring {
         // Buffered mode: write to ring buffer only
         else {
             write(EventType::Msg, current_func, file, line);
-            int buf_idx = get_config().use_double_buffering ? active_buf.load(std::memory_order_relaxed) : 0;
+            int buf_idx = 0;
+#if TRACE_DOUBLE_BUFFER
+            if (get_config().use_double_buffering) {
+                buf_idx = active_buf.load(std::memory_order_relaxed);
+            }
+#endif
             Event& e = buf[buf_idx][(head[buf_idx] + TRACE_RING_CAP - 1) % TRACE_RING_CAP];
             
             if (!fmt) {
@@ -1084,6 +1130,7 @@ inline void flush_ring(Ring& r) {
     uint32_t start = 0;
     
     // Double-buffering mode: swap buffers atomically
+#if TRACE_DOUBLE_BUFFER
     if (get_config().use_double_buffering) {
         std::lock_guard<std::mutex> flush_lock(r.flush_mtx);
         
@@ -1112,8 +1159,10 @@ inline void flush_ring(Ring& r) {
         r.head[flush_buf_idx] = 0;
         r.wraps[flush_buf_idx] = 0;
     }
+    else
+#endif
     // Single-buffer mode: flush in-place (original behavior)
-    else {
+    {
         std::lock_guard<std::mutex> io_lock(io_mtx);
         
         flush_buf_idx = 0;
@@ -1205,7 +1254,12 @@ inline bool dump_binary(const char* path) {
         if (!r || !r->registered) continue;
         
         // Determine which buffer(s) to dump
-        int num_buffers = get_config().use_double_buffering ? 2 : 1;
+        int num_buffers = TRACE_NUM_BUFFERS;
+#if TRACE_DOUBLE_BUFFER
+        if (!get_config().use_double_buffering) {
+            num_buffers = 1;  // Only dump first buffer if not using double-buffering
+        }
+#endif
         
         for (int buf_idx = 0; buf_idx < num_buffers; ++buf_idx) {
             uint32_t count = (r->wraps[buf_idx] == 0) ? r->head[buf_idx] : TRACE_RING_CAP;

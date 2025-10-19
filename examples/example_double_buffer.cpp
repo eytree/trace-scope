@@ -12,9 +12,17 @@
  * - After flush completes, swap: write to buffer B while flushing buffer A
  * 
  * This allows zero disruption during flush operations.
+ * 
+ * REQUIRES: Compile with TRACE_DOUBLE_BUFFER=1
+ * CMake: cmake -DTRACE_DOUBLE_BUFFER=ON ..
+ * Or:    #define TRACE_DOUBLE_BUFFER 1 before including trace_scope.hpp
  */
 
 #include <trace-scope/trace_scope.hpp>
+
+#if !TRACE_DOUBLE_BUFFER
+#error "This example requires TRACE_DOUBLE_BUFFER=1. Reconfigure cmake with -DTRACE_DOUBLE_BUFFER=ON"
+#endif
 #include <thread>
 #include <chrono>
 #include <atomic>

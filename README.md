@@ -86,11 +86,29 @@ trace::config.use_double_buffering = false; // Enable double-buffering (default:
 
 #### Double-Buffering Mode
 
-For extremely high-frequency tracing scenarios where flush operations are called frequently:
+For extremely high-frequency tracing scenarios, double-buffering eliminates race conditions during flush operations.
 
+**Compile-time requirement** (to save memory when not needed):
+
+```bash
+# Configure cmake with double-buffering enabled
+cmake -DTRACE_DOUBLE_BUFFER=ON ..
+
+# Or define before including header
+#define TRACE_DOUBLE_BUFFER 1
+#include <trace-scope/trace_scope.hpp>
+```
+
+**Then enable at runtime:**
 ```cpp
 trace::config.use_double_buffering = true;  // Enable double-buffering
 ```
+
+**Why compile-time?**
+- ✅ **Saves ~1.2 MB per thread** when disabled (50% memory reduction)
+- ✅ **Most users don't need it** - opt-in only for extreme scenarios
+- ✅ **Smaller binaries** and faster compilation by default
+- ⚠️ **Runtime error** if you set `use_double_buffering=true` without compiling it in
 
 **Benefits:**
 - **Eliminates race conditions** during flush operations
@@ -99,8 +117,8 @@ trace::config.use_double_buffering = true;  // Enable double-buffering
 - **Better performance** in high-frequency scenarios (millions of events/sec)
 
 **Trade-offs:**
-- **2x memory usage** per thread (~4MB per thread with default settings)
-- **Slightly more complex** implementation
+- **2x memory usage** per thread when enabled (~2.4MB with default settings)
+- **Compile-time flag required** (prevents accidental memory waste)
 
 **When to use:**
 - Generating millions of trace events per second
@@ -110,7 +128,9 @@ trace::config.use_double_buffering = true;  // Enable double-buffering
 
 **Example:**
 ```cpp
-// Enable double-buffering for high-frequency tracing
+// In CMakeLists.txt:
+// set(TRACE_DOUBLE_BUFFER ON)
+
 trace::config.use_double_buffering = true;
 
 // Start high-frequency tracing...
@@ -520,15 +540,28 @@ void my_function(int x) {
 
 ## Build-Time Configuration
 
-Control buffer sizes at compile time:
+Control buffer sizes and features at compile time:
 
 ```cpp
 #define TRACE_ENABLED 1        // Enable/disable all tracing (default: 1)
 #define TRACE_RING_CAP 4096    // Events per thread (default: 4096)
 #define TRACE_MSG_CAP 192      // Max message size (default: 192)
 #define TRACE_DEPTH_MAX 512    // Max call depth tracked (default: 512)
+#define TRACE_DOUBLE_BUFFER 0  // Enable double-buffering (default: 0, saves ~1.2MB/thread)
 
-#include <trace_scope.hpp>
+#include <trace-scope/trace_scope.hpp>
+```
+
+**Or in CMakeLists.txt:**
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(my_project)
+
+# Enable double-buffering if needed
+set(TRACE_DOUBLE_BUFFER ON)  # OFF by default to save memory
+
+add_subdirectory(trace-scope)
+target_link_libraries(my_app PRIVATE trace_scope)
 ```
 
 ## Thread Safety
