@@ -1,27 +1,11 @@
 #include <trace-scope/trace_scope.hpp>
+#include "test_framework.hpp"
 #include <thread>
 #include <chrono>
-#include <cassert>
 #include <cstdio>
 #include <cstring>
 #include <vector>
 #include <string>
-
-// Test utilities
-static int test_passed = 0;
-static int test_failed = 0;
-
-#define TEST(name) \
-    void test_##name(); \
-    static struct TestRegistrar_##name { \
-        TestRegistrar_##name() { \
-            std::printf("Running test: %s\n", #name); \
-            test_##name(); \
-            std::printf("  ✓ %s passed\n", #name); \
-            test_passed++; \
-        } \
-    } test_reg_##name; \
-    void test_##name()
 
 // Test 1: Multi-threaded tracing (thread safety)
 TEST(multi_threaded_trace) {
@@ -251,15 +235,15 @@ TEST(binary_dump) {
     
     // Test binary dump
     bool ok = trace::dump_binary("test_comprehensive.bin");
-    assert(ok && "Binary dump failed");
+    TEST_ASSERT(ok, "Binary dump failed");
     
     // Verify file exists and has content
     FILE* f = std::fopen("test_comprehensive.bin", "rb");
-    assert(f && "Binary file not created");
+    TEST_ASSERT(f != nullptr, "Binary file not created");
     
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
-    assert(size > 0 && "Binary file is empty");
+    TEST_ASSERT(size > 0, "Binary file is empty");
     
     std::fclose(f);
     trace::config.out = stdout;
@@ -309,21 +293,7 @@ TEST(thread_local_independence) {
     trace::config.out = stdout;
 }
 
-int main() {
-    std::printf("\n=== Comprehensive Trace Scope Tests ===\n\n");
-    
-    // Tests run automatically via static initializers
-    
-    std::printf("\n=== Test Summary ===\n");
-    std::printf("Passed: %d\n", test_passed);
-    std::printf("Failed: %d\n", test_failed);
-    
-    if (test_failed > 0) {
-        std::printf("\n❌ Some tests failed!\n");
-        return 1;
-    }
-    
-    std::printf("\n✓ All tests passed!\n");
-    return 0;
+int main(int argc, char** argv) {
+    return run_tests(argc, argv);
 }
 

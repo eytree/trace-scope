@@ -9,9 +9,9 @@
  */
 
 #include <trace-scope/trace_scope.hpp>
+#include "test_framework.hpp"
 #include <thread>
 #include <chrono>
-#include <cassert>
 #include <cstdio>
 #include <sys/stat.h>
 
@@ -41,10 +41,9 @@ static void branch() {
  * Creates traces from multiple threads, flushes to binary file,
  * and verifies the output was created successfully.
  */
-int main() {
+TEST(multi_threaded_binary_dump) {
     TRACE_SCOPE();
-    // trace::config.out = std::fopen("test_trace.log", "w");
-
+    
     // Run branch() in separate thread and main thread
     std::thread t(branch);
     branch();
@@ -55,14 +54,14 @@ int main() {
     
     // Create binary dump and verify success
     bool ok = trace::dump_binary("test_trace.bin");
-    assert(ok && "dump_binary failed");
+    TEST_ASSERT(ok, "dump_binary failed");
 
     // Verify binary file exists and has content
     struct stat st;
-    assert(stat("test_trace.bin", &st) == 0 && "Binary file not created");
-    assert(st.st_size > 0 && "Binary file is empty");
+    TEST_ASSERT(stat("test_trace.bin", &st) == 0, "Binary file not created");
+    TEST_ASSERT(st.st_size > 0, "Binary file is empty");
+}
 
-    // Basic sanity: ensure we can pretty print without crashing
-    // (User can run tools/trc_pretty.py manually.)
-    return 0;
+int main(int argc, char** argv) {
+    return run_tests(argc, argv);
 }

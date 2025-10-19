@@ -12,9 +12,9 @@
  */
 
 #include <trace-scope/trace_scope.hpp>
+#include "test_framework.hpp"
 #include <cstdio>
 #include <cstdlib>
-#include <cassert>
 
 /**
  * @brief Simple test function.
@@ -31,7 +31,7 @@ void test_function(int value) {
  * Generates a predictable trace pattern and dumps it to binary.
  * The Python parser should be able to read this without errors.
  */
-int main() {
+TEST(binary_format_and_python_parser) {
     TRACE_SCOPE();
     
     // Generate some trace events
@@ -48,7 +48,7 @@ int main() {
     // Dump binary
     const char* bin_file = "test_binary_format.bin";
     bool ok = trace::dump_binary(bin_file);
-    assert(ok && "Binary dump failed");
+    TEST_ASSERT(ok, "Binary dump failed");
     
     std::printf("\n=== Binary Format Test ===\n");
     std::printf("Generated: %s\n", bin_file);
@@ -72,7 +72,9 @@ int main() {
         std::printf("  (This may be normal if Python is not in PATH)\n");
         std::printf("  Please run manually: python tools/trc_pretty.py %s\n", bin_file);
     }
-    
-    return 0;
+}
+
+int main(int argc, char** argv) {
+    return run_tests(argc, argv);
 }
 

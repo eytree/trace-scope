@@ -511,6 +511,121 @@ See LICENSE file.
 
 **Long delays on exit**: Disable `auto_flush_at_exit` and manually flush before returning
 
+## Development & Testing
+
+### Building from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/eytree/trace-scope.git
+cd trace-scope
+
+# Create build directory
+mkdir build && cd build
+
+# Configure with CMake (Ninja or your preferred generator)
+cmake -G Ninja ..
+
+# Build all targets (examples + tests)
+cmake --build .
+
+# Or build specific targets
+cmake --build . --target test_comprehensive
+cmake --build . --target example_basic
+```
+
+### Running Tests
+
+trace-scope includes a lightweight, dependency-free test framework that supports running individual tests or test suites.
+
+**Run all tests:**
+```bash
+./test_comprehensive              # Run all 12 tests
+./test_double_buffer               # Run all double-buffer tests
+./test_framework_test              # Run framework self-tests
+```
+
+**List available tests:**
+```bash
+./test_comprehensive --list
+# Output:
+# Registered tests (12 total):
+#   [1] multi_threaded_trace
+#   [2] immediate_vs_buffered
+#   [3] config_combinations
+#   ...
+```
+
+**Run specific tests:**
+```bash
+# Run tests matching "buffer"
+./test_comprehensive buffer
+# Runs: immediate_vs_buffered, ring_buffer_wraparound
+
+# Run tests matching "timing"
+./test_comprehensive timing
+# Runs: timing_accuracy
+
+# Run specific test by exact name match
+./test_double_buffer functional
+# Runs: functional test only
+```
+
+**Command-line options:**
+- No arguments: Run all tests
+- `test_name`: Run tests containing this substring
+- `--list` or `-l`: List all registered tests
+- `--help` or `-h`: Show usage information
+
+### Test Framework
+
+The test framework (`tests/test_framework.hpp`) is a header-only, dependency-free testing system designed specifically for trace-scope:
+
+**Features:**
+- Automatic test registration via `TEST()` macro
+- Rich assertion macros: `TEST_ASSERT()`, `TEST_ASSERT_EQ()`, `TEST_ASSERT_NE()`
+- Selective test execution via command-line filtering
+- Clear pass/fail reporting with detailed error messages
+- Exception-safe test isolation
+- Zero external dependencies
+
+**Writing new tests:**
+```cpp
+#include "test_framework.hpp"
+#include <trace-scope/trace_scope.hpp>
+
+TEST(my_feature_test) {
+    // Setup
+    trace::config.out = std::fopen("my_test.log", "w");
+    
+    // Test your feature
+    TRACE_SCOPE();
+    TRACE_MSG("Testing feature");
+    
+    // Assertions
+    TEST_ASSERT(some_condition, "Feature should work");
+    TEST_ASSERT_EQ(actual_value, expected_value, "Values match");
+    
+    // Cleanup
+    trace::flush_all();
+    std::fclose(trace::config.out);
+    trace::config.out = stdout;
+}
+
+int main(int argc, char** argv) {
+    return run_tests(argc, argv);
+}
+```
+
+**Current test coverage:**
+- `test_framework_test`: 10 tests validating the framework itself
+- `test_comprehensive`: 12 tests covering core functionality
+- `test_double_buffer`: 5 tests for double-buffering mode
+- `test_trace`: Multi-threaded tracing and binary dumps
+- `test_binary_format`: Binary format compatibility with Python parser
+
+All tests run cleanly with **zero external dependencies** - just C++17 standard library.
+
 ## Roadmap
 
 ### Immediate Priority (Next Release)
