@@ -866,6 +866,190 @@ void my_function(int x) {
 - Always creates backups for safety
 - Review changes before committing instrumented code
 
+## Statistical Post-Processing
+
+The `trc_analyze.py` tool provides advanced post-processing features for analyzing trace data, detecting regressions, and visualizing call relationships.
+
+### Commands Overview
+
+```bash
+trc_analyze.py <command> [OPTIONS]
+
+Commands:
+  display    - Pretty-print trace with filtering and colors
+  stats      - Performance metrics and statistics
+  callgraph  - Call graph generation (text tree, GraphViz DOT)
+  compare    - Performance regression detection
+  diff       - Execution path comparison
+  query      - Enhanced filtering/querying (coming soon)
+```
+
+### Call Graph Generation
+
+Visualize function call relationships, call counts, and timing information.
+
+**Text Tree Output:**
+```bash
+# Generate call graph as text tree
+python tools/trc_analyze.py callgraph trace.bin
+
+# Output:
+# └── main calls=1 total=10.00 ms avg=10.00 ms
+#     ├── foo calls=3 total=6.50 ms avg=2.17 ms
+#     │   └── helper calls=3 total=1.20 ms avg=400.00 us
+#     └── bar calls=2 total=3.40 ms avg=1.70 ms
+
+# Save to file
+python tools/trc_analyze.py callgraph trace.bin --output callgraph.txt
+```
+
+**GraphViz DOT Format:**
+```bash
+# Generate GraphViz DOT file
+python tools/trc_analyze.py callgraph trace.bin --format dot --output callgraph.dot
+
+# Generate PNG image (requires GraphViz installed)
+dot -Tpng callgraph.dot -o callgraph.png
+
+# Features:
+# - Nodes colored by total duration (heatmap)
+# - Edge labels show call counts
+# - Edge thickness indicates frequency
+```
+
+**Options:**
+- `--format tree|dot` - Output format (default: tree)
+- `--output FILE` - Save to file instead of stdout
+- `--no-counts` - Hide call counts
+- `--no-durations` - Hide timing information
+- `--tree-max-depth N` - Limit tree depth
+- `--no-color` - Disable DOT node coloring
+- `--filter-function PATTERN` - Apply filters (same as display/stats)
+
+**Use Cases:**
+1. Understand code structure and call relationships
+2. Identify most frequently called functions
+3. Find critical paths (longest execution chains)
+4. Detect recursion patterns
+5. Generate documentation visualizations
+
+### Performance Regression Detection
+
+Compare two trace files to detect performance changes.
+
+**Basic Comparison:**
+```bash
+# Compare baseline vs current
+python tools/trc_analyze.py compare baseline.bin current.bin
+
+# Output shows:
+# - Regressions (slower functions, higher memory)
+# - Improvements (faster functions, lower memory)
+# - New functions (only in current)
+# - Removed functions (only in baseline)
+```
+
+**Advanced Options:**
+```bash
+# Set threshold (only report >=10% changes)
+python tools/trc_analyze.py compare baseline.bin current.bin --threshold 10
+
+# Show all results (not just top N)
+python tools/trc_analyze.py compare baseline.bin current.bin --show-all
+
+# Export to CSV/JSON
+python tools/trc_analyze.py compare baseline.bin current.bin --export-csv regression.csv
+
+# Fail if regressions found (for CI/CD)
+python tools/trc_analyze.py compare baseline.bin current.bin --fail-on-regression
+```
+
+**Example Output:**
+```
+====================================================================================================
+ Performance Comparison Report
+====================================================================================================
+
+⚠ REGRESSIONS DETECTED (2):
+----------------------------------------------------------------------------------------------------
+Function                                 Metric                 Baseline         Current          Change
+----------------------------------------------------------------------------------------------------
+slow_function                            avg_ns                 16.22 ms        28.91 ms          +78.2%
+memory_function                          memory_delta            4.00 MB         8.00 MB         +100.0%
+
+✓ IMPROVEMENTS (1):
+----------------------------------------------------------------------------------------------------
+improved_function                        avg_ns                 10.00 ms         5.00 ms          -50.0%
+
++ NEW FUNCTIONS (1):
+  + new_function
+
+- REMOVED FUNCTIONS (1):
+  - removed_function
+```
+
+**Use Cases:**
+1. CI/CD regression testing (--fail-on-regression)
+2. Performance optimization validation
+3. Pre-merge performance checks
+4. Release candidate validation
+5. A/B testing different implementations
+
+**Example Integration:**
+See `examples/example_regression.cpp` for generating baseline and current traces with known performance differences.
+
+### Execution Path Diff
+
+Compare execution paths between two trace runs to detect behavioral differences.
+
+**Basic Diff:**
+```bash
+# Compare execution paths
+python tools/trc_analyze.py diff trace_a.bin trace_b.bin
+
+# Export to JSON
+python tools/trc_analyze.py diff old.bin new.bin --export-json diff_report.json
+```
+
+**What It Detects:**
+- Functions called in A but not in B
+- Functions called in B but not in A
+- Different call orders (sequence differences)
+- Different call depths
+
+**Use Cases:**
+1. Validate refactoring didn't change behavior
+2. Debug test failures (compare passing vs failing runs)
+3. Detect side effects from code changes
+4. Verify feature flags work correctly
+5. Compare different execution modes
+
+### Filtering Support
+
+All post-processing commands support filtering:
+
+```bash
+# Callgraph for core functions only
+python tools/trc_analyze.py callgraph trace.bin --filter-function "core_*"
+
+# Compare specific subsystem
+python tools/trc_analyze.py compare baseline.bin current.bin \
+    --filter-file "src/networking/*"
+
+# Diff specific thread
+python tools/trc_analyze.py diff trace_a.bin trace_b.bin \
+    --filter-thread 0x1234
+```
+
+**Filter Options:**
+- `--filter-function PATTERN` - Include functions matching wildcard pattern
+- `--exclude-function PATTERN` - Exclude functions
+- `--filter-file PATTERN` - Include files matching pattern
+- `--exclude-file PATTERN` - Exclude files
+- `--filter-thread TID` - Include specific thread IDs
+- `--exclude-thread TID` - Exclude thread IDs
+- `--max-depth N` - Maximum call depth
+
 ## Build-Time Configuration
 
 Control buffer sizes and features at compile time:
@@ -1183,6 +1367,27 @@ python tools/trc_analyze.py stats trace.bin --sort-by total
 python tools/trc_analyze.py stats trace.bin --export-csv stats.csv
 ```
 
+**Statistical Post-Processing** *(Implemented)*
+- ✅ Call graph generation (text tree, GraphViz DOT)
+- ✅ Performance regression detection (baseline vs current comparison)
+- ✅ Trace diff (execution path comparison)
+- ✅ Filtering support for all post-processing commands
+- ✅ CSV/JSON export for all features
+- ✅ 12 comprehensive tests across 3 modules, all passing
+- See Statistical Post-Processing section above
+
+**Example:**
+```bash
+# Call graph
+python tools/trc_analyze.py callgraph trace.bin --format dot -o callgraph.dot
+
+# Regression detection
+python tools/trc_analyze.py compare baseline.bin current.bin --threshold 10
+
+# Trace diff
+python tools/trc_analyze.py diff trace_a.bin trace_b.bin
+```
+
 ### Near-Term Features
 
 ### Medium-Term Goals
@@ -1200,11 +1405,12 @@ python tools/trc_analyze.py stats trace.bin --export-csv stats.csv
 - Thread swimlanes
 - Flame graph view
 
-**Statistical Post-Processing (Python tools)**
-- Call graph generation (GraphViz)
-- Performance regression detection
-- Trace diff between runs
-- Filter/query trace files
+**Enhanced Query/Analysis**
+- SQL-like query syntax for trace files
+- Saved query templates
+- Time-series analysis (slice by time ranges)
+- Historical tracking with SQLite database
+- Trend detection and anomaly identification
 
 ### Future Considerations
 - Asynchronous I/O for immediate mode

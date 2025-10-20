@@ -126,33 +126,113 @@ def cmd_stats(args):
 
 
 def cmd_callgraph(args):
-    """Generate call graph (placeholder)."""
-    print("Call graph generation - Coming soon!", file=sys.stderr)
-    print("This will parse trace events and generate:", file=sys.stderr)
-    print("  - Text tree (indented, ASCII art)", file=sys.stderr)
-    print("  - GraphViz DOT format", file=sys.stderr)
-    print("  - Call counts and timing annotations", file=sys.stderr)
-    sys.exit(1)
+    """Generate call graph."""
+    from trc_callgraph import build_call_graph, format_text_tree, format_graphviz_dot, print_call_graph_summary
+    
+    # Build filter from args
+    filt = EventFilter()
+    filt.include_functions = args.filter_function
+    filt.exclude_functions = args.exclude_function
+    filt.include_files = args.filter_file
+    filt.exclude_files = args.exclude_file
+    filt.include_threads = args.filter_thread
+    filt.exclude_threads = args.exclude_thread
+    filt.max_depth = args.max_depth
+    
+    # Read events
+    version, events = read_all_events(args.file)
+    
+    # Build call graph
+    graph = build_call_graph(events, filt)
+    
+    # Print summary
+    if not args.quiet:
+        print_call_graph_summary(graph)
+    
+    # Generate output based on format
+    if args.format == 'tree':
+        output = format_text_tree(graph, 
+                                  show_counts=args.show_counts,
+                                  show_durations=args.show_durations,
+                                  max_depth=args.tree_max_depth)
+        
+        if args.output:
+            with open(args.output, 'w', encoding='utf-8') as f:
+                f.write(output)
+            print(f"Call graph saved to {args.output}")
+        else:
+            print(output)
+    
+    elif args.format == 'dot':
+        output = format_graphviz_dot(graph,
+                                     show_counts=args.show_counts,
+                                     show_durations=args.show_durations,
+                                     colorize=args.colorize)
+        
+        if args.output:
+            with open(args.output, 'w', encoding='utf-8') as f:
+                f.write(output)
+            print(f"GraphViz DOT file saved to {args.output}")
+            print(f"  Generate image: dot -Tpng {args.output} -o callgraph.png")
+        else:
+            print(output)
 
 
 def cmd_compare(args):
-    """Performance regression detection (placeholder)."""
-    print("Performance regression detection - Coming soon!", file=sys.stderr)
-    print("This will compare two trace files and detect:", file=sys.stderr)
-    print("  - Function-level duration changes", file=sys.stderr)
-    print("  - Call count changes", file=sys.stderr)
-    print("  - Memory usage changes", file=sys.stderr)
-    sys.exit(1)
+    """Performance regression detection."""
+    from trc_compare import compare_traces, print_comparison_report, export_comparison_csv, export_comparison_json
+    
+    # Build filter from args
+    filt = EventFilter()
+    filt.include_functions = args.filter_function
+    filt.exclude_functions = args.exclude_function
+    filt.include_files = args.filter_file
+    filt.exclude_files = args.exclude_file
+    filt.include_threads = args.filter_thread
+    filt.exclude_threads = args.exclude_thread
+    filt.max_depth = args.max_depth
+    
+    # Compare traces
+    comparison = compare_traces(args.baseline, args.current, filt, args.threshold)
+    
+    # Export if requested
+    if args.export_csv:
+        export_comparison_csv(comparison, args.export_csv)
+    if args.export_json:
+        export_comparison_json(comparison, args.export_json)
+    
+    # Print report unless only exporting
+    if not args.export_csv and not args.export_json:
+        print_comparison_report(comparison, args.show_all)
+    
+    # Exit with error code if regressions found
+    if args.fail_on_regression and comparison['regressions']:
+        print(f"\n✗ FAIL: {len(comparison['regressions'])} regression(s) detected", file=sys.stderr)
+        sys.exit(1)
 
 
 def cmd_diff(args):
-    """Trace diff between runs (placeholder)."""
-    print("Trace diff - Coming soon!", file=sys.stderr)
-    print("This will compare execution paths between two traces:", file=sys.stderr)
-    print("  - Functions called in A but not B", file=sys.stderr)
-    print("  - Different call orders", file=sys.stderr)
-    print("  - Unified diff style output", file=sys.stderr)
-    sys.exit(1)
+    """Trace diff between runs."""
+    from trc_diff import ExecutionPath, compute_diff, print_diff_report, export_diff_json
+    
+    # Read events from both files
+    _, events_a = read_all_events(args.file_a)
+    _, events_b = read_all_events(args.file_b)
+    
+    # Build execution paths
+    path_a = ExecutionPath(events_a)
+    path_b = ExecutionPath(events_b)
+    
+    # Compute diff
+    diff = compute_diff(path_a, path_b)
+    
+    # Export if requested
+    if args.export_json:
+        export_diff_json(diff, args.export_json, args.file_a, args.file_b)
+    
+    # Print report unless only exporting
+    if not args.export_json:
+        print_diff_report(diff, args.file_a, args.file_b)
 
 
 def cmd_query(args):
@@ -272,21 +352,114 @@ Examples:
     
     parser_stats.set_defaults(func=cmd_stats)
     
-    # === CALLGRAPH COMMAND (placeholder) ===
-    parser_callgraph = subparsers.add_parser('callgraph', help='Generate call graph (coming soon)')
+    # === CALLGRAPH COMMAND ===
+    parser_callgraph = subparsers.add_parser('callgraph', help='Generate call graph')
     parser_callgraph.add_argument('file', help='Binary trace file to process')
+    
+    # Output format
+    parser_callgraph.add_argument('--format', '-f', choices=['tree', 'dot'], default='tree',
+                                  help='Output format: tree (text) or dot (GraphViz)')
+    parser_callgraph.add_argument('--output', '-o', metavar='FILE',
+                                  help='Output file (default: stdout)')
+    
+    # Display options
+    parser_callgraph.add_argument('--show-counts', action='store_true', default=True,
+                                  help='Show call counts (default: enabled)')
+    parser_callgraph.add_argument('--no-counts', dest='show_counts', action='store_false',
+                                  help='Hide call counts')
+    parser_callgraph.add_argument('--show-durations', action='store_true', default=True,
+                                  help='Show timing information (default: enabled)')
+    parser_callgraph.add_argument('--no-durations', dest='show_durations', action='store_false',
+                                  help='Hide timing information')
+    parser_callgraph.add_argument('--tree-max-depth', type=int, default=-1,
+                                  help='Maximum tree depth to display (-1 = unlimited)')
+    parser_callgraph.add_argument('--colorize', action='store_true', default=True,
+                                  help='Colorize DOT nodes by duration (default: enabled)')
+    parser_callgraph.add_argument('--no-color', dest='colorize', action='store_false',
+                                  help='Disable DOT node coloring')
+    parser_callgraph.add_argument('--quiet', '-q', action='store_true',
+                                  help='Suppress summary output')
+    
+    # Function filters (same as display/stats)
+    parser_callgraph.add_argument('--filter-function', '--include-function', action='append', default=[],
+                                  help='Include functions matching pattern (wildcard *)')
+    parser_callgraph.add_argument('--exclude-function', action='append', default=[],
+                                  help='Exclude functions matching pattern (wildcard *)')
+    
+    # File filters
+    parser_callgraph.add_argument('--filter-file', '--include-file', action='append', default=[],
+                                  help='Include files matching pattern (wildcard *)')
+    parser_callgraph.add_argument('--exclude-file', action='append', default=[],
+                                  help='Exclude files matching pattern (wildcard *)')
+    
+    # Thread filters
+    parser_callgraph.add_argument('--filter-thread', '--include-thread', action='append', default=[],
+                                  type=lambda x: int(x, 0),
+                                  help='Include specific thread IDs (hex: 0x1234 or decimal)')
+    parser_callgraph.add_argument('--exclude-thread', action='append', default=[],
+                                  type=lambda x: int(x, 0),
+                                  help='Exclude specific thread IDs')
+    
+    # Depth filter
+    parser_callgraph.add_argument('--max-depth', type=int, default=-1,
+                                  help='Maximum call depth to include (-1 = unlimited)')
+    
     parser_callgraph.set_defaults(func=cmd_callgraph)
     
-    # === COMPARE COMMAND (placeholder) ===
-    parser_compare = subparsers.add_parser('compare', help='Performance regression detection (coming soon)')
+    # === COMPARE COMMAND ===
+    parser_compare = subparsers.add_parser('compare', help='Performance regression detection')
     parser_compare.add_argument('baseline', help='Baseline trace file')
     parser_compare.add_argument('current', help='Current trace file')
+    
+    # Comparison options
+    parser_compare.add_argument('--threshold', '-t', type=float, default=5.0,
+                                help='Minimum percentage change to report (default: 5.0%%)')
+    parser_compare.add_argument('--show-all', action='store_true',
+                                help='Show all regressions/improvements (not just top N)')
+    parser_compare.add_argument('--fail-on-regression', action='store_true',
+                                help='Exit with error code if regressions detected (for CI/CD)')
+    
+    # Export options
+    parser_compare.add_argument('--export-csv', metavar='FILE',
+                                help='Export comparison to CSV file')
+    parser_compare.add_argument('--export-json', metavar='FILE',
+                                help='Export comparison to JSON file')
+    
+    # Function filters
+    parser_compare.add_argument('--filter-function', '--include-function', action='append', default=[],
+                                help='Include functions matching pattern (wildcard *)')
+    parser_compare.add_argument('--exclude-function', action='append', default=[],
+                                help='Exclude functions matching pattern (wildcard *)')
+    
+    # File filters
+    parser_compare.add_argument('--filter-file', '--include-file', action='append', default=[],
+                                help='Include files matching pattern (wildcard *)')
+    parser_compare.add_argument('--exclude-file', action='append', default=[],
+                                help='Exclude files matching pattern (wildcard *)')
+    
+    # Thread filters
+    parser_compare.add_argument('--filter-thread', '--include-thread', action='append', default=[],
+                                type=lambda x: int(x, 0),
+                                help='Include specific thread IDs (hex: 0x1234 or decimal)')
+    parser_compare.add_argument('--exclude-thread', action='append', default=[],
+                                type=lambda x: int(x, 0),
+                                help='Exclude specific thread IDs')
+    
+    # Depth filter
+    parser_compare.add_argument('--max-depth', type=int, default=-1,
+                                help='Maximum call depth to include (-1 = unlimited)')
+    
     parser_compare.set_defaults(func=cmd_compare)
     
-    # === DIFF COMMAND (placeholder) ===
-    parser_diff = subparsers.add_parser('diff', help='Trace diff between runs (coming soon)')
+    # === DIFF COMMAND ===
+    parser_diff = subparsers.add_parser('diff', help='Trace diff between runs')
     parser_diff.add_argument('file_a', help='First trace file')
     parser_diff.add_argument('file_b', help='Second trace file')
+    
+    # Export options
+    parser_diff.add_argument('--export-json', metavar='FILE',
+                            help='Export diff results to JSON file')
+    
     parser_diff.set_defaults(func=cmd_diff)
     
     # === QUERY COMMAND (placeholder) ===

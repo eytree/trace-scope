@@ -6,8 +6,95 @@ This document tracks major features, design decisions, and implementation milest
 
 ## October 20, 2025
 
-### Python Tool Refactoring - Multi-Command Architecture
+### Statistical Post-Processing Tools
 **Commit:** (pending)  
+**Feature:** Call graph generation, regression detection, trace diff
+
+**Problem:** Need advanced post-processing capabilities for trace analysis: visualizing call relationships, detecting performance regressions, and comparing execution paths between runs.
+
+**Solution:** Implemented comprehensive statistical post-processing features:
+
+**Call Graph Generation:**
+- Parse trace events to build call tree and call graph
+- Track caller → callee relationships with call counts and durations
+- Output formats:
+  - Text tree (indented, ASCII art with call counts/timing)
+  - GraphViz DOT (with heatmap coloring and edge annotations)
+- Features:
+  - Recursive call detection and marking
+  - Multi-threaded call graph merging
+  - Filtering support (analyze specific subsystems)
+  - Configurable display options (show/hide counts, durations)
+
+**Performance Regression Detection:**
+- Compare baseline vs current trace files
+- Detect regressions:
+  - Function-level duration changes (avg_ns, total_ns)
+  - Call count changes
+  - Memory usage changes (memory_delta)
+  - New/removed functions
+- Output: Console table sorted by regression severity
+- Export: CSV and JSON for CI/CD integration
+- Features:
+  - Configurable threshold (e.g., >5% slower)
+  - Show top N or all results
+  - Filter by function pattern before comparison
+  - `--fail-on-regression` for CI/CD (exit code 1 if regressions found)
+
+**Trace Diff:**
+- Compare execution paths between two trace runs
+- Detect differences:
+  - Functions called in A but not B (removed)
+  - Functions called in B but not A (added)
+  - Different call orders (sequence changes)
+  - Different call depths
+- Output: Unified diff style with context
+- Export: JSON for programmatic analysis
+
+**Example Usage:**
+
+Call Graph:
+```bash
+# Text tree
+python tools/trc_analyze.py callgraph trace.bin
+
+# GraphViz DOT
+python tools/trc_analyze.py callgraph trace.bin --format dot --output callgraph.dot
+dot -Tpng callgraph.dot -o callgraph.png
+```
+
+Regression Detection:
+```bash
+# Compare traces
+python tools/trc_analyze.py compare baseline.bin current.bin --threshold 10
+
+# CI/CD integration
+python tools/trc_analyze.py compare baseline.bin current.bin --fail-on-regression
+```
+
+Trace Diff:
+```bash
+python tools/trc_analyze.py diff passing_run.bin failing_run.bin
+```
+
+**Files Modified:**
+- `tools/trc_callgraph.py` (new) - Call graph generation logic
+- `tools/trc_compare.py` (new) - Performance regression detection
+- `tools/trc_diff.py` (new) - Execution path diff
+- `tools/trc_analyze.py` - Added callgraph, compare, diff subcommands
+- `tools/test_trc_callgraph.py` (new) - Call graph tests (5 tests, all passing)
+- `tools/test_trc_compare.py` (new) - Regression detection tests (3 tests, all passing)
+- `tools/test_trc_diff.py` (new) - Trace diff tests (4 tests, all passing)
+- `examples/example_regression.cpp` (new) - Regression testing example
+- `examples/CMakeLists.txt` - Added example_regression target
+- `README.md` - Added "Statistical Post-Processing" section
+- `.gitignore` - Added *.dot, *_callgraph.*, *.csv, *.json
+- `HISTORY.md` - This entry
+
+---
+
+### Python Tool Refactoring - Multi-Command Architecture
+**Commit:** `f776922`  
 **Breaking Change:** `trc_pretty.py` renamed to `trc_analyze.py` with subcommand structure
 
 **Problem:** The Python tool (`trc_pretty.py`) was growing in functionality and needed better organization for upcoming statistical post-processing features (call graphs, regression detection, trace diff).

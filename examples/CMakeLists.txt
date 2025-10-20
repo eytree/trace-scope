@@ -36,3 +36,6 @@ target_link_libraries(test_python_tool PRIVATE trace_scope)
 add_executable(example_stats example_stats.cpp)
 target_link_libraries(example_stats PRIVATE trace_scope)
 
+add_executable(example_regression example_regression.cpp)
+target_link_libraries(example_regression PRIVATE trace_scope)
+
