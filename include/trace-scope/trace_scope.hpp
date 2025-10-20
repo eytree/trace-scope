@@ -30,7 +30,6 @@
  *   This creates exported symbols that can be shared across DLL boundaries.
  */
 
-#include <atomic>
 #include <cstdint>
 #include <cstdarg>
 #include <cstdio>
@@ -39,9 +38,24 @@
 #include <chrono>
 #include <mutex>
 #include <thread>
-#include <vector>
 #include <algorithm>
 #include <sstream>
+#include <map>
+#include <string>
+#include <vector>
+#include <atomic>
+
+// Platform-specific includes for memory sampling
+#ifdef _WIN32
+#include <windows.h>
+#include <psapi.h>
+// Undefine Windows macros that conflict with std::min/max
+#undef min
+#undef max
+#elif defined(__APPLE__)
+#include <mach/mach.h>
+#include <mach/task.h>
+#endif
 
 // DLL export/import macros for shared state across DLL boundaries
 #ifndef TRACE_SCOPE_API
@@ -333,6 +347,10 @@ struct Config {
         int max_depth = -1;                          ///< Maximum trace depth (-1 = unlimited)
     } filter;
     
+    // Performance metrics and memory tracking
+    bool print_stats = false;        ///< Print performance statistics at program exit
+    bool track_memory = false;       ///< Sample RSS memory at each trace point (low overhead ~1-5µs)
+    
     /**
      * @brief Load configuration from INI file.
      * 
@@ -391,10 +409,83 @@ struct Event {
     EventType   type;                   ///< Event type (Enter/Exit/Msg)
     uint64_t    dur_ns;                 ///< Duration in nanoseconds (Exit only; 0 otherwise)
     char        msg[TRACE_MSG_CAP + 1]; ///< Message text (Msg events only; empty otherwise)
+    uint64_t    memory_rss = 0;          ///< RSS memory usage in bytes (when track_memory enabled)
 };
 
 // Forward declaration for immediate mode
 inline void print_event(const Event& e, FILE* out);
+
+/**
+ * @brief Performance statistics for a single function.
+ */
+struct FunctionStats {
+    const char* func_name;     ///< Function name
+    uint64_t    call_count;   ///< Number of times function was called
+    uint64_t    total_ns;     ///< Total execution time in nanoseconds
+    uint64_t    min_ns;       ///< Minimum execution time in nanoseconds
+    uint64_t    max_ns;       ///< Maximum execution time in nanoseconds
+    uint64_t    memory_delta; ///< Memory delta in bytes (peak - start RSS)
+    
+    double avg_ns() const { return call_count > 0 ? (double)total_ns / call_count : 0.0; }
+};
+
+/**
+ * @brief Per-thread performance statistics.
+ */
+struct ThreadStats {
+    uint32_t tid;                                    ///< Thread ID
+    std::vector<FunctionStats> functions;            ///< Function statistics for this thread
+    uint64_t total_events;                          ///< Total events in this thread
+    uint64_t peak_rss;                              ///< Peak RSS memory usage for this thread
+};
+
+/**
+ * @brief Memory sampling utilities for RSS tracking.
+ */
+namespace memory_utils {
+
+/**
+ * @brief Get current process RSS (Resident Set Size) in bytes.
+ * 
+ * Cross-platform implementation:
+ * - Windows: Uses GetProcessMemoryInfo()
+ * - Linux: Parses /proc/self/status for VmRSS
+ * - macOS: Uses task_info() with MACH_TASK_BASIC_INFO
+ * 
+ * @return RSS in bytes, or 0 if unable to determine
+ */
+inline uint64_t get_current_rss() {
+#ifdef _WIN32
+    PROCESS_MEMORY_COUNTERS pmc;
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+        return pmc.WorkingSetSize;
+    }
+#elif defined(__linux__)
+    FILE* f = fopen("/proc/self/status", "r");
+    if (f) {
+        char line[256];
+        while (fgets(line, sizeof(line), f)) {
+            if (strncmp(line, "VmRSS:", 6) == 0) {
+                uint64_t rss_kb;
+                if (sscanf(line + 6, "%lu", &rss_kb) == 1) {
+                    fclose(f);
+                    return rss_kb * 1024;  // Convert KB to bytes
+                }
+            }
+        }
+        fclose(f);
+    }
+#elif defined(__APPLE__)
+    struct task_basic_info info;
+    mach_msg_type_number_t size = sizeof(info);
+    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t)&info, &size) == KERN_SUCCESS) {
+        return info.resident_size;
+    }
+#endif
+    return 0;
+}
+
+} // namespace memory_utils
 
 /**
  * @brief Per-thread ring buffer for trace events.
@@ -512,6 +603,13 @@ struct Ring {
         e.type  = type;
         e.msg[0]= '\0';
         e.dur_ns= 0;
+        
+        // Sample memory if tracking is enabled
+        if (get_config().track_memory) {
+            e.memory_rss = memory_utils::get_current_rss();
+        } else {
+            e.memory_rss = 0;
+        }
 
         if (type == EventType::Enter) {
             int d = depth;
@@ -922,6 +1020,10 @@ inline bool Config::load_from_file(const char* path) {
             else if (key == "include_filename") include_filename = ini_parser::parse_bool(value);
             else if (key == "include_function_name") include_function_name = ini_parser::parse_bool(value);
             else if (key == "show_full_path") show_full_path = ini_parser::parse_bool(value);
+        }
+        else if (current_section == "performance") {
+            if (key == "print_stats") print_stats = ini_parser::parse_bool(value);
+            else if (key == "track_memory") track_memory = ini_parser::parse_bool(value);
         }
         else if (current_section == "formatting") {
             if (key == "filename_width") filename_width = ini_parser::parse_int(value);
@@ -1540,6 +1642,7 @@ inline bool dump_binary(const char* path) {
                 w64(e.ts_ns);
                 w32((uint32_t)e.depth);
                 w64(e.dur_ns);
+                w64(e.memory_rss);  // Added in version 2 for memory tracking
 
                 // file, func, msg as length-prefixed
                 auto emit_str = [&](const char* s){
@@ -1664,6 +1767,273 @@ struct TraceStream {
         return *this;
     }
 };
+
+/**
+ * @brief Performance statistics computation and display.
+ */
+namespace stats {
+
+/**
+ * @brief Format duration in human-readable units.
+ * 
+ * @param ns Duration in nanoseconds
+ * @return Formatted string (e.g., "1.23 ms", "456 µs", "2.5 s")
+ */
+inline std::string format_duration_str(uint64_t ns) {
+    char buf[64];
+    if (ns < 1000) {
+        std::snprintf(buf, sizeof(buf), "%lu ns", (unsigned long)ns);
+    } else if (ns < 1000000) {
+        std::snprintf(buf, sizeof(buf), "%.2f µs", ns / 1000.0);
+    } else if (ns < 1000000000) {
+        std::snprintf(buf, sizeof(buf), "%.2f ms", ns / 1000000.0);
+    } else {
+        std::snprintf(buf, sizeof(buf), "%.3f s", ns / 1000000000.0);
+    }
+    return buf;
+}
+
+/**
+ * @brief Format memory size in human-readable units.
+ * 
+ * @param bytes Memory size in bytes
+ * @return Formatted string (e.g., "1.23 MB", "456 KB", "2.5 GB")
+ */
+inline std::string format_memory_str(uint64_t bytes) {
+    char buf[64];
+    if (bytes < 1024) {
+        std::snprintf(buf, sizeof(buf), "%lu B", (unsigned long)bytes);
+    } else if (bytes < 1024 * 1024) {
+        std::snprintf(buf, sizeof(buf), "%.2f KB", bytes / 1024.0);
+    } else if (bytes < 1024 * 1024 * 1024) {
+        std::snprintf(buf, sizeof(buf), "%.2f MB", bytes / (1024.0 * 1024.0));
+    } else {
+        std::snprintf(buf, sizeof(buf), "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0));
+    }
+    return buf;
+}
+
+/**
+ * @brief Compute performance statistics from all ring buffers.
+ * 
+ * Scans all registered ring buffers and computes per-function and per-thread
+ * statistics including call counts, execution times, and memory usage.
+ * 
+ * @return Vector of per-thread statistics
+ */
+inline std::vector<ThreadStats> compute_stats() {
+    std::vector<ThreadStats> result;
+    std::lock_guard<std::mutex> lock(registry().mtx);
+    
+    // Map: tid → (func_name → stats)
+    std::map<uint32_t, std::map<const char*, FunctionStats>> per_thread;
+    std::map<uint32_t, uint64_t> thread_peak_rss;
+    
+    for (Ring* r : registry().rings) {
+        if (!r || !r->registered) continue;
+        
+        uint32_t tid = r->tid;
+        uint64_t thread_peak = 0;
+        
+        // Process all buffers for this ring
+        int num_buffers = TRACE_NUM_BUFFERS;
+#if TRACE_DOUBLE_BUFFER
+        if (!get_config().use_double_buffering) {
+            num_buffers = 1;  // Only process first buffer if not using double-buffering
+        }
+#endif
+        
+        for (int buf_idx = 0; buf_idx < num_buffers; ++buf_idx) {
+            uint32_t count = (r->wraps[buf_idx] == 0) ? r->head[buf_idx] : TRACE_RING_CAP;
+            uint32_t start = (r->wraps[buf_idx] == 0) ? 0 : r->head[buf_idx];
+            
+            for (uint32_t i = 0; i < count; ++i) {
+                uint32_t idx = (start + i) % TRACE_RING_CAP;
+                const Event& e = r->buf[buf_idx][idx];
+                
+                // Track peak RSS for this thread
+                if (e.memory_rss > 0) {
+                    thread_peak = std::max(thread_peak, e.memory_rss);
+                }
+                
+                // Only track Exit events (they have duration)
+                if (e.type != EventType::Exit || !e.func) continue;
+                
+                auto& stats = per_thread[tid][e.func];
+                if (stats.call_count == 0) {
+                    stats.func_name = e.func;
+                    stats.min_ns = UINT64_MAX;
+                    stats.max_ns = 0;
+                    stats.memory_delta = 0;
+                }
+                
+                stats.call_count++;
+                stats.total_ns += e.dur_ns;
+                stats.min_ns = std::min(stats.min_ns, e.dur_ns);
+                stats.max_ns = std::max(stats.max_ns, e.dur_ns);
+                
+                // Track memory delta (simplified: use RSS at exit)
+                if (e.memory_rss > 0) {
+                    stats.memory_delta = std::max(stats.memory_delta, e.memory_rss);
+                }
+            }
+        }
+        
+        thread_peak_rss[tid] = thread_peak;
+    }
+    
+    // Convert to vector
+    for (auto& [tid, funcs] : per_thread) {
+        ThreadStats ts;
+        ts.tid = tid;
+        ts.total_events = 0;
+        ts.peak_rss = thread_peak_rss[tid];
+        
+        for (auto& [fname, fstats] : funcs) {
+            ts.functions.push_back(fstats);
+            ts.total_events += fstats.call_count;
+        }
+        result.push_back(ts);
+    }
+    
+    return result;
+}
+
+/**
+ * @brief Print performance statistics to output stream.
+ * 
+ * Displays global and per-thread statistics in a formatted table.
+ * Shows function call counts, execution times, and memory usage.
+ * 
+ * @param out Output stream (default: stderr)
+ */
+inline void print_stats(FILE* out = stderr) {
+    auto stats = compute_stats();
+    if (stats.empty()) return;
+    
+    std::fprintf(out, "\n");
+    std::fprintf(out, "================================================================================\n");
+    std::fprintf(out, " Performance Metrics Summary\n");
+    std::fprintf(out, "================================================================================\n");
+    
+    // Global aggregation
+    std::map<const char*, FunctionStats> global;
+    uint64_t global_peak_rss = 0;
+    
+    for (const auto& ts : stats) {
+        global_peak_rss = std::max(global_peak_rss, ts.peak_rss);
+        
+        for (const auto& fs : ts.functions) {
+            auto& g = global[fs.func_name];
+            if (g.call_count == 0) {
+                g.func_name = fs.func_name;
+                g.min_ns = UINT64_MAX;
+                g.max_ns = 0;
+                g.memory_delta = 0;
+            }
+            g.call_count += fs.call_count;
+            g.total_ns += fs.total_ns;
+            g.min_ns = std::min(g.min_ns, fs.min_ns);
+            g.max_ns = std::max(g.max_ns, fs.max_ns);
+            g.memory_delta = std::max(g.memory_delta, fs.memory_delta);
+        }
+    }
+    
+    // Sort by total time descending
+    std::vector<FunctionStats> sorted;
+    for (auto& [name, fs] : global) sorted.push_back(fs);
+    std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) {
+        return a.total_ns > b.total_ns;
+    });
+    
+    // Print global stats
+    std::fprintf(out, "\nGlobal Statistics:\n");
+    std::fprintf(out, "--------------------------------------------------------------------------------\n");
+    std::fprintf(out, "%-40s %10s %12s %12s %12s %12s %12s\n",
+                 "Function", "Calls", "Total", "Avg", "Min", "Max", "Memory");
+    std::fprintf(out, "--------------------------------------------------------------------------------\n");
+    
+    for (const auto& fs : sorted) {
+        std::fprintf(out, "%-40s %10lu %12s %12s %12s %12s %12s\n",
+                     fs.func_name,
+                     (unsigned long)fs.call_count,
+                     format_duration_str(fs.total_ns).c_str(),
+                     format_duration_str((uint64_t)fs.avg_ns()).c_str(),
+                     format_duration_str(fs.min_ns).c_str(),
+                     format_duration_str(fs.max_ns).c_str(),
+                     format_memory_str(fs.memory_delta).c_str());
+    }
+    
+    // Print system memory summary
+    if (global_peak_rss > 0) {
+        std::fprintf(out, "\nSystem Memory Summary:\n");
+        std::fprintf(out, "--------------------------------------------------------------------------------\n");
+        std::fprintf(out, "Peak RSS: %s\n", format_memory_str(global_peak_rss).c_str());
+        std::fprintf(out, "Current RSS: %s\n", format_memory_str(memory_utils::get_current_rss()).c_str());
+    }
+    
+    // Per-thread breakdown (if multiple threads)
+    if (stats.size() > 1) {
+        std::fprintf(out, "\nPer-Thread Breakdown:\n");
+        std::fprintf(out, "================================================================================\n");
+        
+        for (const auto& ts : stats) {
+            std::fprintf(out, "\nThread 0x%08x (%lu events, peak RSS: %s):\n", 
+                         ts.tid, (unsigned long)ts.total_events, 
+                         format_memory_str(ts.peak_rss).c_str());
+            std::fprintf(out, "--------------------------------------------------------------------------------\n");
+            std::fprintf(out, "%-40s %10s %12s %12s %12s\n", "Function", "Calls", "Total", "Avg", "Memory");
+            std::fprintf(out, "--------------------------------------------------------------------------------\n");
+            
+            // Sort by total time
+            auto thread_sorted = ts.functions;
+            std::sort(thread_sorted.begin(), thread_sorted.end(), [](const auto& a, const auto& b) {
+                return a.total_ns > b.total_ns;
+            });
+            
+            for (const auto& fs : thread_sorted) {
+                std::fprintf(out, "%-40s %10lu %12s %12s %12s\n",
+                             fs.func_name,
+                             (unsigned long)fs.call_count,
+                             format_duration_str(fs.total_ns).c_str(),
+                             format_duration_str((uint64_t)fs.avg_ns()).c_str(),
+                             format_memory_str(fs.memory_delta).c_str());
+            }
+        }
+    }
+    
+    std::fprintf(out, "================================================================================\n\n");
+}
+
+} // namespace stats
+
+/**
+ * @brief Automatic exit statistics using atexit().
+ * 
+ * Registers a function to print performance statistics at program exit
+ * when Config::print_stats is enabled.
+ */
+namespace internal {
+
+// Flag to ensure we only register once
+static bool stats_registered = false;
+
+// Exit handler function
+inline void stats_exit_handler() {
+    if (get_config().print_stats) {
+        stats::print_stats(get_config().out ? get_config().out : stderr);
+    }
+}
+
+// Register exit handler if stats are enabled
+inline void ensure_stats_registered() {
+    if (!stats_registered && get_config().print_stats) {
+        std::atexit(stats_exit_handler);
+        stats_registered = true;
+    }
+}
+
+} // namespace internal
 
 } // namespace trace
 

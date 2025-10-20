@@ -33,3 +33,6 @@ target_link_libraries(example_thread_colors PRIVATE trace_scope)
 add_executable(test_python_tool test_python_tool.cpp)
 target_link_libraries(test_python_tool PRIVATE trace_scope)
 
+add_executable(example_stats example_stats.cpp)
+target_link_libraries(example_stats PRIVATE trace_scope)
+

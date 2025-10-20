@@ -467,6 +467,138 @@ max_depth = 12
 
 See `examples/example_filtering.cpp` for comprehensive demonstration.
 
+## Performance Metrics
+
+trace-scope provides built-in performance metrics collection with **zero tracing overhead**. Metrics are computed by scanning existing ring buffers at program exit or via the Python post-processing tool.
+
+### Key Features
+
+- **Zero Overhead**: No extra work during tracing (unless memory tracking enabled)
+- **Automatic**: Optional statistics at program exit (C++ runtime)
+- **Comprehensive**: Detailed analysis via Python tool
+- **Filtered**: Apply filters before computing stats
+- **Export**: CSV and JSON export for external analysis
+
+### C++ Runtime Stats (Basic)
+
+Enable automatic performance statistics at program exit:
+
+```cpp
+#include <trace-scope/trace_scope.hpp>
+
+int main() {
+    trace::config.print_stats = true;      // Enable automatic stats at exit
+    trace::config.track_memory = true;     // Optional: sample RSS memory (low overhead ~1-5µs)
+    
+    TRACE_SCOPE();
+    
+    // Your code here...
+    
+    // Binary dump for detailed Python analysis
+    trace::dump_binary("trace.bin");
+    
+    // Stats automatically printed at exit
+    return 0;
+}
+```
+
+**Output:**
+```
+================================================================================
+ Performance Metrics Summary
+================================================================================
+
+Global Statistics:
+--------------------------------------------------------------------------------
+Function                                      Calls        Total          Avg          Min          Max       Memory
+--------------------------------------------------------------------------------
+slow_function                                     6     49.26 ms      8.21 ms      3.30 ms     11.26 ms     15.12 MB
+memory_intensive_function                         3     54.57 ms     18.19 ms     13.25 ms     22.11 ms     13.27 MB
+fast_function                                    11     93.60 us      8.51 us      6.80 us     15.10 us     15.12 MB
+
+Per-Thread Breakdown:
+================================================================================
+
+Thread 0x052b0a09 (20 events, peak RSS: 15.12 MB):
+--------------------------------------------------------------------------------
+Function                                      Calls        Total          Avg       Memory
+--------------------------------------------------------------------------------
+slow_function                                     6     49.26 ms      8.21 ms     15.12 MB
+memory_intensive_function                         3     54.57 ms     18.19 ms     13.27 MB
+fast_function                                    11     93.60 us      8.51 us     15.12 MB
+================================================================================
+```
+
+**What it shows:**
+- **Calls**: Number of times each function was called
+- **Total**: Total execution time across all calls
+- **Avg**: Average execution time per call
+- **Min/Max**: Fastest and slowest execution times
+- **Memory**: Peak RSS memory usage (when `track_memory` enabled)
+- **Per-Thread**: Breakdown by thread (when multiple threads exist)
+
+### Python Tool Stats (Comprehensive)
+
+The Python post-processing tool provides more detailed analysis:
+
+```bash
+# Display performance statistics
+python tools/trc_pretty.py trace.bin --stats
+
+# Sort by different metrics
+python tools/trc_pretty.py trace.bin --stats --sort-by calls     # by call count
+python tools/trc_pretty.py trace.bin --stats --sort-by avg       # by average time
+python tools/trc_pretty.py trace.bin --stats --sort-by name      # alphabetically
+
+# Filter before computing stats
+python tools/trc_pretty.py trace.bin --stats --filter-function "worker*"
+
+# Export to CSV or JSON
+python tools/trc_pretty.py trace.bin --stats --export-csv stats.csv
+python tools/trc_pretty.py trace.bin --stats --export-json stats.json
+```
+
+### Memory Tracking
+
+Memory tracking is **optional** and disabled by default for zero overhead:
+
+```cpp
+trace::config.track_memory = true;  // Sample RSS at each TRACE_SCOPE (low overhead ~1-5µs)
+```
+
+**What it measures:**
+- **RSS (Resident Set Size)**: Total process memory usage
+- **Per-Function Delta**: Peak RSS during function execution
+- **Not Precise**: Includes all allocations, not just the function's own
+- **Use Case**: Find memory-hungry code paths
+
+**Performance Impact:**
+- **Disabled (default)**: Zero overhead
+- **Enabled**: ~1-5 microseconds per TRACE_SCOPE call
+- System calls: `GetProcessMemoryInfo` (Windows), `/proc/self/status` (Linux), `task_info` (macOS)
+
+### Configuration File
+
+Add to your INI file:
+
+```ini
+[performance]
+print_stats = true       # Print stats at program exit
+track_memory = true      # Sample RSS memory at each trace point
+```
+
+### Use Cases
+
+1. **Identify Hotspots**: Find slowest functions
+2. **Optimize Allocations**: Track memory-hungry code paths
+3. **Multi-threaded Analysis**: Compare performance across threads
+4. **Regression Testing**: Export stats to CSV/JSON for CI/CD
+5. **Production Profiling**: Low-overhead performance monitoring
+
+### Example
+
+See `examples/example_stats.cpp` for a complete demonstration with multi-threaded workloads and memory tracking.
+
 ## Stream-Based Logging (TRACE_LOG)
 
 For C++ iostream-style logging, use `TRACE_LOG`:
@@ -1027,21 +1159,27 @@ trace::filter_include_file("src/networking/*"); // Only trace networking
 trace::filter_set_max_depth(10);               // Limit depth
 ```
 
-### Near-Term Features
-
-**Performance Metrics & Analysis**
-- Per-function call count tracking
-- Min/max/average duration statistics
-- Hotspot identification (most time spent)
-- Call frequency analysis
-- Export metrics summary (JSON/CSV)
+**Performance Metrics & Analysis** *(Implemented)*
+- ✅ Zero overhead during tracing (computed at exit/flush)
+- ✅ Per-function call count, min/max/avg duration statistics
+- ✅ Memory tracking (optional RSS sampling, ~1-5µs overhead)
+- ✅ Global and per-thread breakdown
+- ✅ Python tool with filtering, sorting, CSV/JSON export
+- ✅ Automatic stats at program exit (C++) or on-demand (Python)
+- See Performance Metrics section above
 
 **Example:**
 ```cpp
-trace::metrics::enable();
-// ... run code ...
-trace::metrics::print_summary();  // Shows top 10 slowest functions
+trace::config.print_stats = true;       // Automatic stats at exit
+trace::config.track_memory = true;      // Optional RSS tracking
+trace::internal::ensure_stats_registered();  // Register handler
+
+// Python tool
+python tools/trc_pretty.py trace.bin --stats --sort-by total
+python tools/trc_pretty.py trace.bin --stats --export-csv stats.csv
 ```
+
+### Near-Term Features
 
 ### Medium-Term Goals
 

@@ -4,6 +4,96 @@ This document tracks major features, design decisions, and implementation milest
 
 ---
 
+## October 20, 2025
+
+### Performance Metrics System
+**Commit:** (pending)  
+**Feature:** Zero-overhead performance metrics with memory tracking
+
+**Problem:** Need to identify performance hotspots, measure function call counts/durations, and track memory usage without adding overhead during tracing.
+
+**Solution:** Implemented a performance metrics system that computes statistics by scanning existing ring buffers:
+
+**C++ Runtime (Basic Stats):**
+- Added `FunctionStats` and `ThreadStats` structs
+- Implemented `compute_stats()` to scan ring buffers at exit
+- Implemented `print_stats()` with global aggregation and per-thread breakdown
+- Added `format_duration_str()` and `format_memory_str()` helpers
+- Added `atexit()` handler for automatic stats at program exit
+- Added `Config::print_stats` and `Config::track_memory` flags
+- Implemented cross-platform RSS memory sampling:
+  - Windows: `GetProcessMemoryInfo()`
+  - Linux: `/proc/self/status`
+  - macOS: `task_info()`
+
+**Binary Format Update (v2):**
+- Added `memory_rss` field (uint64_t) to Event struct
+- Updated `dump_binary()` to include memory data
+
+**Python Tool (Comprehensive Stats):**
+- Added `compute_stats()` with filtering support
+- Added `print_stats_table()` with sorting options (total, calls, avg, name)
+- Added `export_csv()` for CSV export
+- Added `export_json()` for JSON export
+- Added command-line arguments: `--stats`, `--sort-by`, `--export-csv`, `--export-json`
+- Filters applied **before** computing stats for focused analysis
+
+**Key Features:**
+- **Zero Overhead**: No extra work during tracing (unless memory tracking enabled)
+- **Optional Memory Tracking**: RSS sampling adds ~1-5µs per TRACE_SCOPE (disabled by default)
+- **Global Aggregation**: function → {calls, total_ns, avg_ns, min_ns, max_ns, memory_delta}
+- **Per-Thread Breakdown**: Shows stats for each thread when multiple threads exist
+- **Sort Options**: Sort by total time, call count, average time, or function name
+- **Export Formats**: Console table, CSV, JSON
+- **Filter Integration**: Compute stats only for filtered functions/files/threads
+
+**Performance Impact:**
+- `print_stats = false, track_memory = false`: **Zero overhead** (default)
+- `print_stats = true, track_memory = false`: Stats computed only at program exit (zero runtime overhead)
+- `print_stats = true, track_memory = true`: ~1-5µs per TRACE_SCOPE for RSS sampling
+
+**Example Usage:**
+
+C++ Runtime:
+```cpp
+trace::config.print_stats = true;      // Automatic stats at exit
+trace::config.track_memory = true;     // Optional RSS sampling
+trace::internal::ensure_stats_registered();  // Register atexit handler
+```
+
+Python Tool:
+```bash
+# Display stats
+python tools/trc_pretty.py trace.bin --stats
+
+# Sort by call count
+python tools/trc_pretty.py trace.bin --stats --sort-by calls
+
+# Filter before computing stats
+python tools/trc_pretty.py trace.bin --stats --filter-function "worker*"
+
+# Export to CSV/JSON
+python tools/trc_pretty.py trace.bin --stats --export-csv stats.csv
+python tools/trc_pretty.py trace.bin --stats --export-json stats.json
+```
+
+**Use Cases:**
+1. Identify performance hotspots (slowest functions)
+2. Optimize memory allocations (track RSS growth)
+3. Multi-threaded performance analysis
+4. Regression testing (export stats for CI/CD)
+5. Production profiling with minimal overhead
+
+**Files Modified:**
+- `include/trace-scope/trace_scope.hpp`: Added FunctionStats, ThreadStats, compute_stats(), print_stats(), memory sampling, atexit() handler
+- `tools/trc_pretty.py`: Added compute_stats(), print_stats_table(), export_csv(), export_json()
+- `examples/example_stats.cpp`: New example demonstrating multi-threaded stats and memory tracking
+- `examples/CMakeLists.txt`: Added example_stats target
+- `README.md`: Added "Performance Metrics" section with comprehensive documentation
+- `HISTORY.md`: This entry
+
+---
+
 ## October 19, 2025
 
 ### Python Tool Sync - Binary Format v2 + Filtering + Colors
