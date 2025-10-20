@@ -43,6 +43,23 @@ example.cpp:  13 main                 -> main
 example.cpp:  14 main                 <- main  [234.56 us]
 ```
 
+## Development Tools
+
+This project was developed using:
+- **IDE:** Cursor (AI-powered code editor)
+- **AI Model:** Claude Sonnet 4.5 (Anthropic)
+- **Development Approach:** AI-assisted pair programming with iterative refinement
+- **Testing:** Comprehensive test-driven development with 28+ C++ tests and 22+ Python tests
+
+Key AI-assisted features implemented:
+- Performance metrics system with zero-overhead design
+- Statistical post-processing tools (call graphs, regression detection, trace diff)
+- Runtime filtering with wildcard pattern matching
+- Thread-aware color coding
+- Binary format versioning with backward compatibility
+- Cross-platform memory sampling (Windows/Linux/macOS)
+- Multi-threaded ring buffer architecture with double-buffering option
+
 ## Configuration
 
 All configuration is done via the global `trace::config` object:
