@@ -6,6 +6,59 @@ This document tracks major features, design decisions, and implementation milest
 
 ## October 20, 2025
 
+### Timestamped Binary Dumps
+**Commit:** (pending)  
+**Feature:** Automatic timestamped filenames for binary dumps
+
+**Problem:** The original `dump_binary(path)` always overwrote the same file, causing data loss in:
+- Long-running processes that dump periodically
+- Repeated test runs
+- Multiple trace sessions in a single program
+
+**Solution:** Changed `dump_binary()` to automatically generate unique timestamped filenames:
+
+**Implementation:**
+- **Filename format:** `{prefix}_{YYYYMMDD}_{HHMMSS}_{milliseconds}.bin`
+- **API change:**
+  ```cpp
+  // Old (overwrite):
+  bool dump_binary(const char* path);  // Returns true on success
+  
+  // New (timestamped):
+  std::string dump_binary(const char* prefix = nullptr);  // Returns filename on success
+  ```
+- **Config option:** `trace::config.dump_prefix` (default: "trace")
+- **INI file:** `[dump] prefix = myapp`
+- **Millisecond precision:** Ensures uniqueness even with rapid dumps
+
+**Benefits:**
+- ✅ No data loss from overwrites
+- ✅ Safe periodic dumps in long-running processes
+- ✅ Chronological ordering (files sort by name)
+- ✅ Easy to analyze progression over time
+
+**Example:**
+```cpp
+// Default prefix
+std::string f1 = trace::dump_binary();
+// Returns: trace_20251020_162817_821.bin
+
+// Custom prefix
+trace::config.dump_prefix = "myapp";
+std::string f2 = trace::dump_binary();
+// Returns: myapp_20251020_162817_945.bin
+
+// Override prefix per call
+std::string f3 = trace::dump_binary("special");
+// Returns: special_20251020_162818_001.bin
+```
+
+**Files:**
+- Added: `examples/example_long_running.cpp` - demonstrates periodic dumps
+- Updated: All examples to use new API
+- Updated: `trace_config.ini` with `[dump]` section
+- Updated: `README.md` with timestamped dump documentation
+
 ### Statistical Post-Processing Tools
 **Commit:** (pending)  
 **Feature:** Call graph generation, regression detection, trace diff

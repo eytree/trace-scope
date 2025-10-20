@@ -117,9 +117,10 @@ int main() {
     TRACE_MSG("All workers completed");
     
     // Dump binary trace for Python analysis
-    if (trace::dump_binary("performance_trace.bin")) {
-        std::printf("✓ Binary trace saved to performance_trace.bin\n");
-        std::printf("  Use: python tools/trc_pretty.py performance_trace.bin --stats\n");
+    std::string filename = trace::dump_binary("performance");
+    if (!filename.empty()) {
+        std::printf("✓ Binary trace saved to %s\n", filename.c_str());
+        std::printf("  Use: python tools/trc_analyze.py stats %s\n", filename.c_str());
     }
     
     std::printf("\n✓ Program completed - statistics will be printed at exit\n");

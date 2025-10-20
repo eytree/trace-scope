@@ -351,6 +351,10 @@ struct Config {
     bool print_stats = false;        ///< Print performance statistics at program exit
     bool track_memory = false;       ///< Sample RSS memory at each trace point (low overhead ~1-5µs)
     
+    // Binary dump configuration
+    const char* dump_prefix = "trace";  ///< Filename prefix for binary dumps (default: "trace")
+                                        ///< Generated files: {prefix}_YYYYMMDD_HHMMSS_mmm.bin
+    
     /**
      * @brief Load configuration from INI file.
      * 
@@ -1025,6 +1029,12 @@ inline bool Config::load_from_file(const char* path) {
             if (key == "print_stats") print_stats = ini_parser::parse_bool(value);
             else if (key == "track_memory") track_memory = ini_parser::parse_bool(value);
         }
+        else if (current_section == "dump") {
+            if (key == "prefix") {
+                static std::string prefix_str = ini_parser::unquote(value);
+                dump_prefix = prefix_str.c_str();
+            }
+        }
         else if (current_section == "formatting") {
             if (key == "filename_width") filename_width = ini_parser::parse_int(value);
             else if (key == "line_width") line_width = ini_parser::parse_int(value);
@@ -1586,23 +1596,76 @@ inline void check_auto_flush_on_scope_exit(int final_depth) {
  * 
  * Version 2 format (current):
  *   Each event: type(1) + tid(4) + color_offset(1) + ts_ns(8) + depth(4) + 
- *               dur_ns(8) + file_len(2) + file_str + func_len(2) + func_str +
+ *               dur_ns(8) + memory_rss(8) + file_len(2) + file_str + func_len(2) + func_str +
  *               msg_len(2) + msg_str + line(4)
  * 
- * Version 1 format (legacy, no color_offset):
- *   Each event: type(1) + tid(4) + ts_ns(8) + depth(4) + dur_ns(8) +
- *               file_len(2) + file_str + func_len(2) + func_str +
- *               msg_len(2) + msg_str + line(4)
- * 
- * Use tools/trc_pretty.py to pretty-print the binary file.
+ * Use tools/trc_analyze.py to analyze the binary file.
  * The Python tool supports both version 1 and 2 formats.
- * 
- * @param path Output file path
- * @return true on success, false on failure
  */
-inline bool dump_binary(const char* path) {
-    FILE* f = std::fopen(path, "wb");
-    if (!f) return false;
+
+/**
+ * @brief Generate timestamped filename for binary dumps.
+ * 
+ * Generates filename in format: {prefix}_{YYYYMMDD}_{HHMMSS}_{milliseconds}.bin
+ * Ensures unique filenames even with rapid repeated dumps.
+ * 
+ * @param prefix Optional custom prefix (default: use Config::dump_prefix)
+ * @return Timestamped filename string
+ * 
+ * @example
+ *   auto filename = trace::generate_dump_filename();
+ *   // Returns: "trace_20251020_103045_123.bin"
+ * 
+ *   auto filename = trace::generate_dump_filename("myapp");
+ *   // Returns: "myapp_20251020_103045_123.bin"
+ */
+inline std::string generate_dump_filename(const char* prefix = nullptr) {
+    if (!prefix) prefix = get_config().dump_prefix;
+    
+    auto now = std::chrono::system_clock::now();
+    auto time_t_val = std::chrono::system_clock::to_time_t(now);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now.time_since_epoch()) % 1000;
+    
+    std::tm tm;
+#ifdef _WIN32
+    localtime_s(&tm, &time_t_val);
+#else
+    localtime_r(&time_t_val, &tm);
+#endif
+    
+    char buf[256];
+    std::snprintf(buf, sizeof(buf), "%s_%04d%02d%02d_%02d%02d%02d_%03d.bin",
+                  prefix,
+                  tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+                  tm.tm_hour, tm.tm_min, tm.tm_sec,
+                  (int)ms.count());
+    return std::string(buf);
+}
+
+/**
+ * @brief Dump all ring buffers to a timestamped binary file.
+ * 
+ * Automatically generates timestamped filename to prevent data loss from repeated dumps.
+ * Each call creates a new file: {prefix}_YYYYMMDD_HHMMSS_mmm.bin
+ * 
+ * @param prefix Optional custom prefix (default: Config::dump_prefix, which defaults to "trace")
+ * @return Generated filename on success, empty string on failure
+ * 
+ * @example
+ *   std::string filename = trace::dump_binary();
+ *   if (!filename.empty()) {
+ *       std::printf("Trace saved to %s\n", filename.c_str());
+ *   }
+ * 
+ *   // With custom prefix:
+ *   std::string filename = trace::dump_binary("myapp");
+ *   // Saves to: myapp_20251020_103045_123.bin
+ */
+inline std::string dump_binary(const char* prefix = nullptr) {
+    std::string filename = generate_dump_filename(prefix);
+    FILE* f = std::fopen(filename.c_str(), "wb");
+    if (!f) return "";
 
     auto w8  = [&](uint8_t v){ std::fwrite(&v,1,1,f); };
     auto w16 = [&](uint16_t v){ std::fwrite(&v,1,2,f); };
@@ -1658,7 +1721,7 @@ inline bool dump_binary(const char* path) {
         }
     }
     std::fclose(f);
-    return true;
+    return filename;
 }
 
 /**

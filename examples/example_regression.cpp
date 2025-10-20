@@ -124,18 +124,21 @@ int main(int argc, char* argv[]) {
         }
     }
     
-    // Generate output file
-    const char* output_file = is_current ? "current.bin" : "baseline.bin";
-    if (trace::dump_binary(output_file)) {
-        std::printf("✓ Generated %s\n", output_file);
+    // Generate output file with explicit prefix
+    const char* prefix = is_current ? "current" : "baseline";
+    std::string filename = trace::dump_binary(prefix);
+    if (!filename.empty()) {
+        std::printf("✓ Generated %s\n", filename.c_str());
         
         if (is_baseline) {
             std::printf("\nNext steps:\n");
             std::printf("  1. Run: example_regression current\n");
-            std::printf("  2. Compare: python tools/trc_analyze.py compare baseline.bin current.bin\n");
+            std::printf("  2. Compare: python tools/trc_analyze.py compare baseline_*.bin current_*.bin\n");
+            std::printf("     (use the most recent timestamped files)\n");
         } else {
             std::printf("\nCompare with baseline:\n");
-            std::printf("  python tools/trc_analyze.py compare baseline.bin current.bin\n");
+            std::printf("  python tools/trc_analyze.py compare baseline_*.bin current_*.bin\n");
+            std::printf("  (use the most recent timestamped files)\n");
             std::printf("\nExpected regressions:\n");
             std::printf("  - slow_function: ~2x slower (100%% increase)\n");
             std::printf("  - memory_function: ~2x more memory\n");

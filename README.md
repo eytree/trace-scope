@@ -735,11 +735,32 @@ This approach requires modifying your build system but avoids the runtime setup 
 
 ## Binary Dump Format
 
-For compact storage and post-processing:
+For compact storage and post-processing, the library provides automatic timestamped binary dumps to prevent data loss:
 
 ```cpp
-trace::dump_binary("trace.bin");
+// Automatic timestamped filename (recommended)
+std::string filename = trace::dump_binary();
+// Returns: "trace_20251020_162817_821.bin"
+
+// Custom prefix
+std::string filename = trace::dump_binary("myapp");
+// Returns: "myapp_20251020_103045_123.bin"
+
+// Configure default prefix
+trace::config.dump_prefix = "myproject";
+std::string filename = trace::dump_binary();
+// Returns: "myproject_20251020_103045_123.bin"
 ```
+
+**Benefits of Timestamped Dumps:**
+- ✅ **No data loss**: Each call creates a new unique file
+- ✅ **Safe for long-running processes**: Periodic dumps don't overwrite previous snapshots
+- ✅ **Chronological ordering**: Files sort naturally by timestamp
+- ✅ **Millisecond precision**: Unique even with rapid dumps
+
+**Filename Format:** `{prefix}_{YYYYMMDD}_{HHMMSS}_{milliseconds}.bin`
+
+See `examples/example_long_running.cpp` for periodic dump demonstration.
 
 ### Python Post-Processing Tool
 

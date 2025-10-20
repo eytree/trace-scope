@@ -39,3 +39,6 @@ target_link_libraries(example_stats PRIVATE trace_scope)
 add_executable(example_regression example_regression.cpp)
 target_link_libraries(example_regression PRIVATE trace_scope)
 
+add_executable(example_long_running example_long_running.cpp)
+target_link_libraries(example_long_running PRIVATE trace_scope)
+
