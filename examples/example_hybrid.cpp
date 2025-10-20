@@ -91,8 +91,10 @@ int main() {
     std::printf("Note: Auto-flush triggered automatically when buffer reached 80%% full\n");
     
     // Optional: also dump binary for analysis
-    trace::dump_binary("hybrid.bin");
-    std::printf("Binary dump: hybrid.bin (use trc_pretty.py to view)\n");
+    std::string filename = trace::dump_binary("hybrid");
+    if (!filename.empty()) {
+        std::printf("Binary dump: %s (use trc_analyze.py to view)\n", filename.c_str());
+    }
     
     if (trace::config.out && trace::config.out != stdout) {
         std::fclose(trace::config.out);

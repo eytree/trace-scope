@@ -4,6 +4,415 @@ This document tracks major features, design decisions, and implementation milest
 
 ---
 
+## October 20, 2025 - v0.8.0-alpha
+
+### Version 0.8.0-alpha Release
+**Version:** 0.8.0-alpha  
+**Breaking Changes:** File suffix change, no backward compatibility for .bin files
+
+**Problem:** Need better organization for trace outputs and ability to batch-process multiple trace files. The generic `.bin` extension was not descriptive enough for trace files.
+
+**Solution:** Implemented configurable output directory structures and batch processing capabilities:
+
+**C++ Library Changes:**
+
+**1. New File Suffix (.trc):**
+- Changed default file extension from `.bin` to `.trc` (trace)
+- Configurable via `trace::config.dump_suffix`
+- More descriptive and aligns with tool names (trc_analyze, trc_common, etc.)
+- **Breaking:** Old `.bin` files no longer supported
+
+**2. Configurable Output Directory Structure:**
+- Added `trace::config.output_dir` - specify output directory (default: current directory)
+- Added `trace::Config::OutputLayout` enum with three options:
+  - `Flat`: All files in output_dir (default)
+  - `ByDate`: Organized by date: `logs/2025-10-20/trace_*.trc`
+  - `BySession`: Organized by session: `logs/session_001/trace_*.trc`
+- Session auto-increment: When session=0, automatically finds max and increments
+- Automatic directory creation using C++17 `<filesystem>`
+
+**3. INI Configuration Support:**
+```ini
+[dump]
+prefix = trace
+suffix = .trc
+output_dir = logs
+layout = date     # Options: flat, date, session
+session = 0       # 0 = auto-increment
+```
+
+**4. API Changes:**
+```cpp
+// Flat layout (default)
+trace::config.output_dir = "logs";
+trace::config.output_layout = trace::Config::OutputLayout::Flat;
+std::string file = trace::dump_binary();
+// Returns: "logs/trace_20251020_162817_821.trc"
+
+// Date-based layout
+trace::config.output_layout = trace::Config::OutputLayout::ByDate;
+std::string file = trace::dump_binary();
+// Returns: "logs/2025-10-20/trace_162817_821.trc"
+
+// Session-based layout with auto-increment
+trace::config.output_layout = trace::Config::OutputLayout::BySession;
+std::string file = trace::dump_binary();
+// Returns: "logs/session_001/trace_20251020_162817_821.trc"
+```
+
+**Python Tool Changes:**
+
+**1. Directory Processing:**
+- `trc_analyze.py` now accepts directories as input
+- Processes all `.trc` files in directory automatically
+- Chronological processing by default (modification time)
+- Recursive subdirectory search with `--recursive` flag
+
+**2. File Sorting Options:**
+- `--sort-files chronological` - Sort by modification time (default)
+- `--sort-files name` - Sort alphabetically
+- `--sort-files size` - Sort by file size
+
+**3. Version Management:**
+- Created `VERSION` file at project root as single source of truth
+- Python tools read version from VERSION file dynamically
+- Added `--version` flag to all Python tools
+- C++ header includes version constants (manually synced)
+- CMake reads version from VERSION file
+
+**4. Enhanced Commands:**
+```bash
+# Process single file (as before)
+python tools/trc_analyze.py display trace.trc
+
+# Process directory
+python tools/trc_analyze.py display logs/
+
+# Process directory recursively
+python tools/trc_analyze.py display logs/ --recursive
+
+# Sort files by name before processing
+python tools/trc_analyze.py stats logs/ --sort-files name
+
+# Check version
+python tools/trc_analyze.py --version
+```
+
+**Files Modified:**
+- `VERSION` (new) - Single source of truth for version
+- `include/trace-scope/trace_scope.hpp` - Added version constants, OutputLayout enum, directory structure support
+- `tools/trc_common.py` - Added version reading from VERSION file
+- `tools/trc_analyze.py` - Added directory processing, --version flag, file sorting
+- `examples/trace_config.ini` - Updated [dump] section with new options
+- `.gitignore` - Changed `*.bin` to `*.trc`
+- `HISTORY.md` - This entry
+
+**Benefits:**
+- ✅ Better trace file organization (by date, by session, or flat)
+- ✅ Automatic directory creation
+- ✅ Batch processing of multiple trace files
+- ✅ Chronological analysis of traces over time
+- ✅ More descriptive file extension (.trc)
+- ✅ Version consistency across C++ and Python tools
+
+**Breaking Changes:**
+- **File Extension:** Changed from `.bin` to `.trc` (not backward compatible)
+- **No .bin Support:** Python tools no longer read old `.bin` files
+- This is an alpha release - expect breaking changes before 1.0
+
+**Migration Guide:**
+- Regenerate all trace files with new .trc extension
+- Old .bin files will need to be manually renamed to .trc (may work but not guaranteed)
+- Update any scripts that reference .bin files to use .trc
+- Update INI config files to include [dump] section if customization needed
+
+---
+
+## October 20, 2025
+
+### Timestamped Binary Dumps
+**Commit:** (pending)  
+**Feature:** Automatic timestamped filenames for binary dumps
+
+**Problem:** The original `dump_binary(path)` always overwrote the same file, causing data loss in:
+- Long-running processes that dump periodically
+- Repeated test runs
+- Multiple trace sessions in a single program
+
+**Solution:** Changed `dump_binary()` to automatically generate unique timestamped filenames:
+
+**Implementation:**
+- **Filename format:** `{prefix}_{YYYYMMDD}_{HHMMSS}_{milliseconds}.bin`
+- **API change:**
+  ```cpp
+  // Old (overwrite):
+  bool dump_binary(const char* path);  // Returns true on success
+  
+  // New (timestamped):
+  std::string dump_binary(const char* prefix = nullptr);  // Returns filename on success
+  ```
+- **Config option:** `trace::config.dump_prefix` (default: "trace")
+- **INI file:** `[dump] prefix = myapp`
+- **Millisecond precision:** Ensures uniqueness even with rapid dumps
+
+**Benefits:**
+- ✅ No data loss from overwrites
+- ✅ Safe periodic dumps in long-running processes
+- ✅ Chronological ordering (files sort by name)
+- ✅ Easy to analyze progression over time
+
+**Example:**
+```cpp
+// Default prefix
+std::string f1 = trace::dump_binary();
+// Returns: trace_20251020_162817_821.bin
+
+// Custom prefix
+trace::config.dump_prefix = "myapp";
+std::string f2 = trace::dump_binary();
+// Returns: myapp_20251020_162817_945.bin
+
+// Override prefix per call
+std::string f3 = trace::dump_binary("special");
+// Returns: special_20251020_162818_001.bin
+```
+
+**Files:**
+- Added: `examples/example_long_running.cpp` - demonstrates periodic dumps
+- Updated: All examples to use new API
+- Updated: `trace_config.ini` with `[dump]` section
+- Updated: `README.md` with timestamped dump documentation
+
+### Statistical Post-Processing Tools
+**Commit:** (pending)  
+**Feature:** Call graph generation, regression detection, trace diff
+
+**Problem:** Need advanced post-processing capabilities for trace analysis: visualizing call relationships, detecting performance regressions, and comparing execution paths between runs.
+
+**Solution:** Implemented comprehensive statistical post-processing features:
+
+**Call Graph Generation:**
+- Parse trace events to build call tree and call graph
+- Track caller → callee relationships with call counts and durations
+- Output formats:
+  - Text tree (indented, ASCII art with call counts/timing)
+  - GraphViz DOT (with heatmap coloring and edge annotations)
+- Features:
+  - Recursive call detection and marking
+  - Multi-threaded call graph merging
+  - Filtering support (analyze specific subsystems)
+  - Configurable display options (show/hide counts, durations)
+
+**Performance Regression Detection:**
+- Compare baseline vs current trace files
+- Detect regressions:
+  - Function-level duration changes (avg_ns, total_ns)
+  - Call count changes
+  - Memory usage changes (memory_delta)
+  - New/removed functions
+- Output: Console table sorted by regression severity
+- Export: CSV and JSON for CI/CD integration
+- Features:
+  - Configurable threshold (e.g., >5% slower)
+  - Show top N or all results
+  - Filter by function pattern before comparison
+  - `--fail-on-regression` for CI/CD (exit code 1 if regressions found)
+
+**Trace Diff:**
+- Compare execution paths between two trace runs
+- Detect differences:
+  - Functions called in A but not B (removed)
+  - Functions called in B but not A (added)
+  - Different call orders (sequence changes)
+  - Different call depths
+- Output: Unified diff style with context
+- Export: JSON for programmatic analysis
+
+**Example Usage:**
+
+Call Graph:
+```bash
+# Text tree
+python tools/trc_analyze.py callgraph trace.bin
+
+# GraphViz DOT
+python tools/trc_analyze.py callgraph trace.bin --format dot --output callgraph.dot
+dot -Tpng callgraph.dot -o callgraph.png
+```
+
+Regression Detection:
+```bash
+# Compare traces
+python tools/trc_analyze.py compare baseline.bin current.bin --threshold 10
+
+# CI/CD integration
+python tools/trc_analyze.py compare baseline.bin current.bin --fail-on-regression
+```
+
+Trace Diff:
+```bash
+python tools/trc_analyze.py diff passing_run.bin failing_run.bin
+```
+
+**Files Modified:**
+- `tools/trc_callgraph.py` (new) - Call graph generation logic
+- `tools/trc_compare.py` (new) - Performance regression detection
+- `tools/trc_diff.py` (new) - Execution path diff
+- `tools/trc_analyze.py` - Added callgraph, compare, diff subcommands
+- `tools/test_trc_callgraph.py` (new) - Call graph tests (5 tests, all passing)
+- `tools/test_trc_compare.py` (new) - Regression detection tests (3 tests, all passing)
+- `tools/test_trc_diff.py` (new) - Trace diff tests (4 tests, all passing)
+- `examples/example_regression.cpp` (new) - Regression testing example
+- `examples/CMakeLists.txt` - Added example_regression target
+- `README.md` - Added "Statistical Post-Processing" section
+- `.gitignore` - Added *.dot, *_callgraph.*, *.csv, *.json
+- `HISTORY.md` - This entry
+
+---
+
+### Python Tool Refactoring - Multi-Command Architecture
+**Commit:** `f776922`  
+**Breaking Change:** `trc_pretty.py` renamed to `trc_analyze.py` with subcommand structure
+
+**Problem:** The Python tool (`trc_pretty.py`) was growing in functionality and needed better organization for upcoming statistical post-processing features (call graphs, regression detection, trace diff).
+
+**Solution:** Refactored Python tooling into modular, extensible architecture:
+
+**Refactoring Changes:**
+- Renamed `tools/trc_pretty.py` → `tools/trc_analyze.py`
+- Renamed `tools/test_trc_pretty.py` → `tools/test_trc_analyze.py`
+- Created `tools/trc_common.py` - Shared utilities module:
+  - Binary format reading (version 1 & 2)
+  - Event filtering (`EventFilter` class)
+  - Statistics computation
+  - Color handling (ANSI codes)
+  - Format helpers (duration, memory)
+  - CSV/JSON export functions
+
+**New Subcommand Structure:**
+```bash
+trc_analyze.py <command> [OPTIONS]
+
+Commands:
+  display    Pretty-print trace with filtering (replaces old default behavior)
+  stats      Performance metrics (replaces --stats flag)
+  callgraph  Call graph generation (coming soon)
+  compare    Performance regression detection (coming soon)
+  diff       Trace diff between runs (coming soon)
+  query      Enhanced filtering/querying (coming soon)
+```
+
+**Migration Guide:**
+- Old: `python trc_pretty.py trace.bin`
+- New: `python trc_analyze.py display trace.bin`
+
+- Old: `python trc_pretty.py trace.bin --stats`
+- New: `python trc_analyze.py stats trace.bin`
+
+**Benefits:**
+- Cleaner command-line interface
+- Modular code organization (shared utilities in `trc_common.py`)
+- Easier to add new analysis features
+- Better separation of concerns
+- Foundation for advanced post-processing (call graphs, regression detection, etc.)
+
+**Files Modified:**
+- `tools/trc_pretty.py` → `tools/trc_analyze.py` (renamed, restructured)
+- `tools/test_trc_pretty.py` → `tools/test_trc_analyze.py` (renamed, updated imports)
+- `tools/trc_common.py` (new) - Shared utilities
+- `README.md` - Updated all references from `trc_pretty.py` to `trc_analyze.py`
+- `HISTORY.md` - This entry
+
+---
+
+### Performance Metrics System
+**Commit:** `92848ac`  
+**Feature:** Zero-overhead performance metrics with memory tracking
+
+**Problem:** Need to identify performance hotspots, measure function call counts/durations, and track memory usage without adding overhead during tracing.
+
+**Solution:** Implemented a performance metrics system that computes statistics by scanning existing ring buffers:
+
+**C++ Runtime (Basic Stats):**
+- Added `FunctionStats` and `ThreadStats` structs
+- Implemented `compute_stats()` to scan ring buffers at exit
+- Implemented `print_stats()` with global aggregation and per-thread breakdown
+- Added `format_duration_str()` and `format_memory_str()` helpers
+- Added `atexit()` handler for automatic stats at program exit
+- Added `Config::print_stats` and `Config::track_memory` flags
+- Implemented cross-platform RSS memory sampling:
+  - Windows: `GetProcessMemoryInfo()`
+  - Linux: `/proc/self/status`
+  - macOS: `task_info()`
+
+**Binary Format Update (v2):**
+- Added `memory_rss` field (uint64_t) to Event struct
+- Updated `dump_binary()` to include memory data
+
+**Python Tool (Comprehensive Stats):**
+- Added `compute_stats()` with filtering support
+- Added `print_stats_table()` with sorting options (total, calls, avg, name)
+- Added `export_csv()` for CSV export
+- Added `export_json()` for JSON export
+- Added command-line arguments: `--stats`, `--sort-by`, `--export-csv`, `--export-json`
+- Filters applied **before** computing stats for focused analysis
+
+**Key Features:**
+- **Zero Overhead**: No extra work during tracing (unless memory tracking enabled)
+- **Optional Memory Tracking**: RSS sampling adds ~1-5µs per TRACE_SCOPE (disabled by default)
+- **Global Aggregation**: function → {calls, total_ns, avg_ns, min_ns, max_ns, memory_delta}
+- **Per-Thread Breakdown**: Shows stats for each thread when multiple threads exist
+- **Sort Options**: Sort by total time, call count, average time, or function name
+- **Export Formats**: Console table, CSV, JSON
+- **Filter Integration**: Compute stats only for filtered functions/files/threads
+
+**Performance Impact:**
+- `print_stats = false, track_memory = false`: **Zero overhead** (default)
+- `print_stats = true, track_memory = false`: Stats computed only at program exit (zero runtime overhead)
+- `print_stats = true, track_memory = true`: ~1-5µs per TRACE_SCOPE for RSS sampling
+
+**Example Usage:**
+
+C++ Runtime:
+```cpp
+trace::config.print_stats = true;      // Automatic stats at exit
+trace::config.track_memory = true;     // Optional RSS sampling
+trace::internal::ensure_stats_registered();  // Register atexit handler
+```
+
+Python Tool:
+```bash
+# Display stats
+python tools/trc_pretty.py trace.bin --stats
+
+# Sort by call count
+python tools/trc_pretty.py trace.bin --stats --sort-by calls
+
+# Filter before computing stats
+python tools/trc_pretty.py trace.bin --stats --filter-function "worker*"
+
+# Export to CSV/JSON
+python tools/trc_pretty.py trace.bin --stats --export-csv stats.csv
+python tools/trc_pretty.py trace.bin --stats --export-json stats.json
+```
+
+**Use Cases:**
+1. Identify performance hotspots (slowest functions)
+2. Optimize memory allocations (track RSS growth)
+3. Multi-threaded performance analysis
+4. Regression testing (export stats for CI/CD)
+5. Production profiling with minimal overhead
+
+**Files Modified:**
+- `include/trace-scope/trace_scope.hpp`: Added FunctionStats, ThreadStats, compute_stats(), print_stats(), memory sampling, atexit() handler
+- `tools/trc_pretty.py`: Added compute_stats(), print_stats_table(), export_csv(), export_json()
+- `examples/example_stats.cpp`: New example demonstrating multi-threaded stats and memory tracking
+- `examples/CMakeLists.txt`: Added example_stats target
+- `README.md`: Added "Performance Metrics" section with comprehensive documentation
+- `HISTORY.md`: This entry
+
+---
+
 ## October 19, 2025
 
 ### Python Tool Sync - Binary Format v2 + Filtering + Colors

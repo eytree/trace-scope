@@ -33,3 +33,15 @@ target_link_libraries(example_thread_colors PRIVATE trace_scope)
 add_executable(test_python_tool test_python_tool.cpp)
 target_link_libraries(test_python_tool PRIVATE trace_scope)
 
+add_executable(example_stats example_stats.cpp)
+target_link_libraries(example_stats PRIVATE trace_scope)
+
+add_executable(example_regression example_regression.cpp)
+target_link_libraries(example_regression PRIVATE trace_scope)
+
+add_executable(example_long_running example_long_running.cpp)
+target_link_libraries(example_long_running PRIVATE trace_scope)
+
+add_executable(example_test_v08 example_test_v08.cpp)
+target_link_libraries(example_test_v08 PRIVATE trace_scope)
+

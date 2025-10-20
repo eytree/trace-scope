@@ -67,7 +67,11 @@ int main() {
 
     // Flush all remaining events and create binary dump
     trace::flush_all();
-    trace::dump_binary("trace.bin");
+    
+    std::string filename = trace::dump_binary();
+    if (!filename.empty()) {
+        std::printf("Binary trace saved to %s\n", filename.c_str());
+    }
     
     return 0;
 }

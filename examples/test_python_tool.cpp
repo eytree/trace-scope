@@ -43,8 +43,9 @@ int main() {
     t2.join();
     
     // Dump to binary
-    if (trace::dump_binary("test_trace.bin")) {
-        std::printf("✓ Generated test_trace.bin\n");
+    std::string filename = trace::dump_binary("test_trace");
+    if (!filename.empty()) {
+        std::printf("✓ Generated %s\n", filename.c_str());
     } else {
         std::printf("✗ Failed to generate binary\n");
         return 1;

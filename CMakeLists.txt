@@ -1,5 +1,16 @@
 cmake_minimum_required(VERSION 3.16)
-project(trace_scope LANGUAGES CXX)
+
+# Read version from VERSION file
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" TRACE_SCOPE_VERSION)
+string(STRIP "${TRACE_SCOPE_VERSION}" TRACE_SCOPE_VERSION)
+
+# Extract numeric version for CMake (CMake VERSION doesn't support suffixes like "-alpha")
+string(REGEX REPLACE "^([0-9]+\\.[0-9]+\\.[0-9]+).*" "\\1" TRACE_SCOPE_VERSION_NUMERIC "${TRACE_SCOPE_VERSION}")
+
+project(trace_scope 
+    VERSION ${TRACE_SCOPE_VERSION_NUMERIC}
+    LANGUAGES CXX
+)
 
 option(TRACE_ENABLED "Enable trace instrumentation" ON)
 option(TRACE_DOUBLE_BUFFER "Enable double-buffering support (saves ~1.2MB per thread when OFF)" OFF)
