@@ -12,6 +12,18 @@ Shared functionality:
 
 import struct
 import re
+import pathlib
+
+
+# Version information - read from VERSION file at project root
+def get_version():
+    """Read version from VERSION file at project root."""
+    version_file = pathlib.Path(__file__).parent.parent / 'VERSION'
+    if version_file.exists():
+        return version_file.read_text().strip()
+    return 'unknown'
+
+__version__ = get_version()
 
 
 # Event types (must match C++ EventType enum)

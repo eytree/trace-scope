@@ -4,6 +4,130 @@ This document tracks major features, design decisions, and implementation milest
 
 ---
 
+## October 20, 2025 - v0.8.0-alpha
+
+### Version 0.8.0-alpha Release
+**Version:** 0.8.0-alpha  
+**Breaking Changes:** File suffix change, no backward compatibility for .bin files
+
+**Problem:** Need better organization for trace outputs and ability to batch-process multiple trace files. The generic `.bin` extension was not descriptive enough for trace files.
+
+**Solution:** Implemented configurable output directory structures and batch processing capabilities:
+
+**C++ Library Changes:**
+
+**1. New File Suffix (.trc):**
+- Changed default file extension from `.bin` to `.trc` (trace)
+- Configurable via `trace::config.dump_suffix`
+- More descriptive and aligns with tool names (trc_analyze, trc_common, etc.)
+- **Breaking:** Old `.bin` files no longer supported
+
+**2. Configurable Output Directory Structure:**
+- Added `trace::config.output_dir` - specify output directory (default: current directory)
+- Added `trace::Config::OutputLayout` enum with three options:
+  - `Flat`: All files in output_dir (default)
+  - `ByDate`: Organized by date: `logs/2025-10-20/trace_*.trc`
+  - `BySession`: Organized by session: `logs/session_001/trace_*.trc`
+- Session auto-increment: When session=0, automatically finds max and increments
+- Automatic directory creation using C++17 `<filesystem>`
+
+**3. INI Configuration Support:**
+```ini
+[dump]
+prefix = trace
+suffix = .trc
+output_dir = logs
+layout = date     # Options: flat, date, session
+session = 0       # 0 = auto-increment
+```
+
+**4. API Changes:**
+```cpp
+// Flat layout (default)
+trace::config.output_dir = "logs";
+trace::config.output_layout = trace::Config::OutputLayout::Flat;
+std::string file = trace::dump_binary();
+// Returns: "logs/trace_20251020_162817_821.trc"
+
+// Date-based layout
+trace::config.output_layout = trace::Config::OutputLayout::ByDate;
+std::string file = trace::dump_binary();
+// Returns: "logs/2025-10-20/trace_162817_821.trc"
+
+// Session-based layout with auto-increment
+trace::config.output_layout = trace::Config::OutputLayout::BySession;
+std::string file = trace::dump_binary();
+// Returns: "logs/session_001/trace_20251020_162817_821.trc"
+```
+
+**Python Tool Changes:**
+
+**1. Directory Processing:**
+- `trc_analyze.py` now accepts directories as input
+- Processes all `.trc` files in directory automatically
+- Chronological processing by default (modification time)
+- Recursive subdirectory search with `--recursive` flag
+
+**2. File Sorting Options:**
+- `--sort-files chronological` - Sort by modification time (default)
+- `--sort-files name` - Sort alphabetically
+- `--sort-files size` - Sort by file size
+
+**3. Version Management:**
+- Created `VERSION` file at project root as single source of truth
+- Python tools read version from VERSION file dynamically
+- Added `--version` flag to all Python tools
+- C++ header includes version constants (manually synced)
+- CMake reads version from VERSION file
+
+**4. Enhanced Commands:**
+```bash
+# Process single file (as before)
+python tools/trc_analyze.py display trace.trc
+
+# Process directory
+python tools/trc_analyze.py display logs/
+
+# Process directory recursively
+python tools/trc_analyze.py display logs/ --recursive
+
+# Sort files by name before processing
+python tools/trc_analyze.py stats logs/ --sort-files name
+
+# Check version
+python tools/trc_analyze.py --version
+```
+
+**Files Modified:**
+- `VERSION` (new) - Single source of truth for version
+- `include/trace-scope/trace_scope.hpp` - Added version constants, OutputLayout enum, directory structure support
+- `tools/trc_common.py` - Added version reading from VERSION file
+- `tools/trc_analyze.py` - Added directory processing, --version flag, file sorting
+- `examples/trace_config.ini` - Updated [dump] section with new options
+- `.gitignore` - Changed `*.bin` to `*.trc`
+- `HISTORY.md` - This entry
+
+**Benefits:**
+- ✅ Better trace file organization (by date, by session, or flat)
+- ✅ Automatic directory creation
+- ✅ Batch processing of multiple trace files
+- ✅ Chronological analysis of traces over time
+- ✅ More descriptive file extension (.trc)
+- ✅ Version consistency across C++ and Python tools
+
+**Breaking Changes:**
+- **File Extension:** Changed from `.bin` to `.trc` (not backward compatible)
+- **No .bin Support:** Python tools no longer read old `.bin` files
+- This is an alpha release - expect breaking changes before 1.0
+
+**Migration Guide:**
+- Regenerate all trace files with new .trc extension
+- Old .bin files will need to be manually renamed to .trc (may work but not guaranteed)
+- Update any scripts that reference .bin files to use .trc
+- Update INI config files to include [dump] section if customization needed
+
+---
+
 ## October 20, 2025
 
 ### Timestamped Binary Dumps

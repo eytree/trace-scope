@@ -14,7 +14,7 @@ cmake-build-*/
 
 # Test outputs
 *.log
-*.bin
+*.trc
 
 # IDE files
 .vs/

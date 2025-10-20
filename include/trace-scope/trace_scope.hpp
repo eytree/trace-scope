@@ -44,6 +44,7 @@
 #include <string>
 #include <vector>
 #include <atomic>
+#include <filesystem>
 
 // Platform-specific includes for memory sampling
 #ifdef _WIN32
@@ -108,6 +109,12 @@
 #else
 #define TRACE_NUM_BUFFERS 1
 #endif
+
+// Version information - keep in sync with VERSION file at project root
+#define TRACE_SCOPE_VERSION "0.8.0-alpha"
+#define TRACE_SCOPE_VERSION_MAJOR 0
+#define TRACE_SCOPE_VERSION_MINOR 8
+#define TRACE_SCOPE_VERSION_PATCH 0
 
 namespace trace {
 
@@ -353,13 +360,24 @@ struct Config {
     
     // Binary dump configuration
     const char* dump_prefix = "trace";  ///< Filename prefix for binary dumps (default: "trace")
-                                        ///< Generated files: {prefix}_YYYYMMDD_HHMMSS_mmm.bin
+    const char* dump_suffix = ".trc";   ///< File extension for binary dumps (default: ".trc")
+    const char* output_dir = nullptr;   ///< Output directory (nullptr = current directory)
+    
+    /// Output directory layout options
+    enum class OutputLayout {
+        Flat,      ///< All files in output_dir: output_dir/trace_*.trc
+        ByDate,    ///< Organized by date: output_dir/2025-10-20/trace_*.trc
+        BySession  ///< Organized by session: output_dir/session_001/trace_*.trc
+    };
+    OutputLayout output_layout = OutputLayout::Flat;  ///< Directory structure layout (default: Flat)
+    int current_session = 0;  ///< Session number for BySession layout (0 = auto-increment)
     
     /**
      * @brief Load configuration from INI file.
      * 
      * Parses an INI file and applies settings to this Config instance.
-     * Supports sections: [output], [display], [formatting], [markers], [modes]
+     * Supports sections: [output], [display], [formatting], [markers], [modes], 
+     *                     [filter], [performance], [dump]
      * 
      * @param path Path to INI file (relative or absolute)
      * @return true on success, false if file not found or critical error
@@ -369,6 +387,12 @@ struct Config {
      * [display]
      * print_timing = true
      * print_timestamp = false
+     * 
+     * [dump]
+     * prefix = trace
+     * suffix = .trc
+     * output_dir = logs
+     * layout = date
      * 
      * [markers]
      * indent_marker = | 
@@ -1034,6 +1058,31 @@ inline bool Config::load_from_file(const char* path) {
                 static std::string prefix_str = ini_parser::unquote(value);
                 dump_prefix = prefix_str.c_str();
             }
+            else if (key == "suffix") {
+                static std::string suffix_str = ini_parser::unquote(value);
+                dump_suffix = suffix_str.c_str();
+            }
+            else if (key == "output_dir") {
+                static std::string dir_str = ini_parser::unquote(value);
+                output_dir = dir_str.c_str();
+            }
+            else if (key == "layout") {
+                std::string layout_str = ini_parser::trim(value);
+                // Convert to lowercase for case-insensitive comparison
+                for (char& c : layout_str) {
+                    c = (char)std::tolower((unsigned char)c);
+                }
+                if (layout_str == "flat") output_layout = OutputLayout::Flat;
+                else if (layout_str == "date" || layout_str == "bydate") output_layout = OutputLayout::ByDate;
+                else if (layout_str == "session" || layout_str == "bysession") output_layout = OutputLayout::BySession;
+                else {
+                    std::fprintf(stderr, "trace-scope: Warning: Unknown layout '%s' in %s:%d\n", 
+                                value.c_str(), path, line_num);
+                }
+            }
+            else if (key == "session") {
+                current_session = ini_parser::parse_int(value);
+            }
         }
         else if (current_section == "formatting") {
             if (key == "filename_width") filename_width = ini_parser::parse_int(value);
@@ -1606,21 +1655,27 @@ inline void check_auto_flush_on_scope_exit(int final_depth) {
 /**
  * @brief Generate timestamped filename for binary dumps.
  * 
- * Generates filename in format: {prefix}_{YYYYMMDD}_{HHMMSS}_{milliseconds}.bin
- * Ensures unique filenames even with rapid repeated dumps.
+ * Generates filename with configurable directory structure:
+ * - Flat: output_dir/prefix_YYYYMMDD_HHMMSS_mmm.trc
+ * - ByDate: output_dir/YYYY-MM-DD/prefix_HHMMSS_mmm.trc
+ * - BySession: output_dir/session_NNN/prefix_YYYYMMDD_HHMMSS_mmm.trc
+ * 
+ * Creates directories automatically if they don't exist.
  * 
  * @param prefix Optional custom prefix (default: use Config::dump_prefix)
- * @return Timestamped filename string
+ * @return Full path to timestamped filename
  * 
  * @example
+ *   trace::config.output_dir = "logs";
+ *   trace::config.output_layout = trace::Config::OutputLayout::ByDate;
  *   auto filename = trace::generate_dump_filename();
- *   // Returns: "trace_20251020_103045_123.bin"
- * 
- *   auto filename = trace::generate_dump_filename("myapp");
- *   // Returns: "myapp_20251020_103045_123.bin"
+ *   // Returns: "logs/2025-10-20/trace_162817_821.trc"
  */
 inline std::string generate_dump_filename(const char* prefix = nullptr) {
+    namespace fs = std::filesystem;
+    
     if (!prefix) prefix = get_config().dump_prefix;
+    const char* suffix = get_config().dump_suffix;
     
     auto now = std::chrono::system_clock::now();
     auto time_t_val = std::chrono::system_clock::to_time_t(now);
@@ -1634,33 +1689,111 @@ inline std::string generate_dump_filename(const char* prefix = nullptr) {
     localtime_r(&time_t_val, &tm);
 #endif
     
-    char buf[256];
-    std::snprintf(buf, sizeof(buf), "%s_%04d%02d%02d_%02d%02d%02d_%03d.bin",
+    // Build base path
+    fs::path base_path;
+    if (get_config().output_dir) {
+        base_path = get_config().output_dir;
+    } else {
+        base_path = ".";
+    }
+    
+    // Add subdirectory based on layout
+    fs::path dir_path;
+    switch (get_config().output_layout) {
+        case Config::OutputLayout::ByDate: {
+            // Subdirectory: YYYY-MM-DD
+            char date_buf[32];
+            std::snprintf(date_buf, sizeof(date_buf), "%04d-%02d-%02d",
+                          tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+            dir_path = base_path / date_buf;
+            break;
+        }
+        case Config::OutputLayout::BySession: {
+            // Subdirectory: session_NNN
+            int session = get_config().current_session;
+            
+            // Auto-increment: find max existing session number
+            if (session == 0) {
+                int max_session = 0;
+                try {
+                    if (fs::exists(base_path)) {
+                        for (const auto& entry : fs::directory_iterator(base_path)) {
+                            if (entry.is_directory()) {
+                                std::string dirname = entry.path().filename().string();
+                                if (dirname.substr(0, 8) == "session_") {
+                                    int num = std::atoi(dirname.substr(8).c_str());
+                                    max_session = std::max(max_session, num);
+                                }
+                            }
+                        }
+                    }
+                } catch (...) {
+                    // Ignore errors during auto-detection
+                }
+                session = max_session + 1;
+            }
+            
+            char session_buf[32];
+            std::snprintf(session_buf, sizeof(session_buf), "session_%03d", session);
+            dir_path = base_path / session_buf;
+            break;
+        }
+        case Config::OutputLayout::Flat:
+        default:
+            // No subdirectory
+            dir_path = base_path;
+            break;
+    }
+    
+    // Create directory if it doesn't exist
+    try {
+        if (!dir_path.empty() && !fs::exists(dir_path)) {
+            fs::create_directories(dir_path);
+        }
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "trace-scope: Failed to create directory %s: %s\n",
+                     dir_path.string().c_str(), e.what());
+        // Fall back to current directory
+        dir_path = ".";
+    }
+    
+    // Generate filename
+    char filename_buf[256];
+    std::snprintf(filename_buf, sizeof(filename_buf), "%s_%04d%02d%02d_%02d%02d%02d_%03d%s",
                   prefix,
                   tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
                   tm.tm_hour, tm.tm_min, tm.tm_sec,
-                  (int)ms.count());
-    return std::string(buf);
+                  (int)ms.count(),
+                  suffix);
+    
+    fs::path full_path = dir_path / filename_buf;
+    return full_path.string();
 }
 
 /**
  * @brief Dump all ring buffers to a timestamped binary file.
  * 
- * Automatically generates timestamped filename to prevent data loss from repeated dumps.
- * Each call creates a new file: {prefix}_YYYYMMDD_HHMMSS_mmm.bin
+ * Automatically generates timestamped filename with configurable directory structure.
+ * Creates directories automatically if they don't exist.
  * 
  * @param prefix Optional custom prefix (default: Config::dump_prefix, which defaults to "trace")
- * @return Generated filename on success, empty string on failure
+ * @return Generated full path on success, empty string on failure
  * 
  * @example
+ *   // Simple usage (current directory, flat layout)
  *   std::string filename = trace::dump_binary();
- *   if (!filename.empty()) {
- *       std::printf("Trace saved to %s\n", filename.c_str());
- *   }
+ *   // Returns: "trace_20251020_162817_821.trc"
  * 
- *   // With custom prefix:
+ *   // With output directory and date-based layout
+ *   trace::config.output_dir = "logs";
+ *   trace::config.output_layout = trace::Config::OutputLayout::ByDate;
+ *   std::string filename = trace::dump_binary();
+ *   // Returns: "logs/2025-10-20/trace_162817_821.trc"
+ * 
+ *   // Session-based layout with auto-increment
+ *   trace::config.output_layout = trace::Config::OutputLayout::BySession;
  *   std::string filename = trace::dump_binary("myapp");
- *   // Saves to: myapp_20251020_103045_123.bin
+ *   // Returns: "logs/session_001/myapp_20251020_162817_821.trc"
  */
 inline std::string dump_binary(const char* prefix = nullptr) {
     std::string filename = generate_dump_filename(prefix);

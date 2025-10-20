@@ -26,9 +26,13 @@ Features:
 
 import sys
 import argparse
+import os
+import glob
+from pathlib import Path
 
 # Import common utilities
 from trc_common import (
+    __version__,
     EVENT_TYPE_ENTER, EVENT_TYPE_EXIT, EVENT_TYPE_MSG,
     COLORS, RESET,
     read_header, read_event, read_all_events,
@@ -36,6 +40,51 @@ from trc_common import (
     format_duration, format_memory, get_color,
     compute_stats, print_stats_table, export_csv, export_json
 )
+
+
+def process_directory(path, pattern='*.trc', recursive=False, sort_by='chronological'):
+    """
+    Find and sort trace files in a directory.
+    
+    Args:
+        path: Directory path to search
+        pattern: File pattern to match (default: *.trc)
+        recursive: Search subdirectories recursively (default: False)
+        sort_by: Sort order - 'chronological' (mtime), 'name', or 'size' (default: chronological)
+    
+    Returns:
+        List of file paths sorted according to sort_by parameter
+    """
+    dir_path = Path(path)
+    
+    if not dir_path.exists():
+        print(f"Error: Directory not found: {path}", file=sys.stderr)
+        return []
+    
+    if not dir_path.is_dir():
+        print(f"Error: Not a directory: {path}", file=sys.stderr)
+        return []
+    
+    # Find files
+    files = []
+    if recursive:
+        files = list(dir_path.rglob(pattern))
+    else:
+        files = list(dir_path.glob(pattern))
+    
+    if not files:
+        print(f"No {pattern} files found in {path}", file=sys.stderr)
+        return []
+    
+    # Sort files
+    if sort_by == 'name':
+        files.sort(key=lambda f: f.name)
+    elif sort_by == 'size':
+        files.sort(key=lambda f: f.stat().st_size)
+    else:  # chronological (mtime)
+        files.sort(key=lambda f: f.stat().st_mtime)
+    
+    return [str(f) for f in files]
 
 
 def print_event(event, use_color=False, show_timing=True, show_timestamp=False):
@@ -76,23 +125,59 @@ def cmd_display(args):
     filt.exclude_threads = args.exclude_thread
     filt.max_depth = args.max_depth
     
-    # Read and process
-    version, events = read_all_events(args.file)
-    print(f'# Binary format version: {version}', file=sys.stderr)
+    # Determine if input is file or directory
+    input_path = Path(args.input)
+    files = []
     
-    # Filter and display
-    displayed_count = 0
-    for event in events:
-        if filt.should_trace(event):
-            print_event(event, args.color, not args.no_timing, args.timestamp)
-            displayed_count += 1
+    if input_path.is_dir():
+        # Process directory
+        files = process_directory(args.input, pattern='*.trc', 
+                                   recursive=args.recursive,
+                                   sort_by=args.sort_files)
+        if not files:
+            return
+        print(f'# Processing {len(files)} files from directory: {args.input}', file=sys.stderr)
+    elif input_path.is_file():
+        files = [args.input]
+    else:
+        print(f'Error: File or directory not found: {args.input}', file=sys.stderr)
+        return
     
-    # Summary
-    total_count = len(events)
-    print(f'\n# Processed {total_count} events, displayed {displayed_count}', file=sys.stderr)
-    if total_count != displayed_count:
-        filtered = total_count - displayed_count
-        pct = (filtered / total_count * 100) if total_count > 0 else 0
+    # Process each file
+    total_events_all = 0
+    total_displayed_all = 0
+    
+    for file_path in files:
+        if len(files) > 1:
+            print(f'\n# ===== {file_path} =====', file=sys.stderr)
+        
+        # Read and process
+        version, events = read_all_events(file_path)
+        if len(files) == 1:
+            print(f'# Binary format version: {version}', file=sys.stderr)
+        
+        # Filter and display
+        displayed_count = 0
+        for event in events:
+            if filt.should_trace(event):
+                print_event(event, args.color, not args.no_timing, args.timestamp)
+                displayed_count += 1
+        
+        total_events_all += len(events)
+        total_displayed_all += displayed_count
+        
+        # Per-file summary (if multiple files)
+        if len(files) > 1:
+            filtered = len(events) - displayed_count
+            pct = (filtered / len(events) * 100) if len(events) > 0 else 0
+            print(f'# File: {displayed_count}/{len(events)} events displayed ({filtered} filtered, {pct:.1f}%)', 
+                  file=sys.stderr)
+    
+    # Overall summary
+    print(f'\n# Total: Processed {total_events_all} events, displayed {total_displayed_all}', file=sys.stderr)
+    if total_events_all != total_displayed_all:
+        filtered = total_events_all - total_displayed_all
+        pct = (filtered / total_events_all * 100) if total_events_all > 0 else 0
         print(f'# Filtered out {filtered} events ({pct:.1f}%)', file=sys.stderr)
 
 
@@ -108,11 +193,35 @@ def cmd_stats(args):
     filt.exclude_threads = args.exclude_thread
     filt.max_depth = args.max_depth
     
-    # Read events
-    version, events = read_all_events(args.file)
+    # Determine if input is file or directory
+    input_path = Path(args.input)
+    files = []
     
-    # Compute statistics
-    global_stats, thread_stats = compute_stats(events, filt)
+    if input_path.is_dir():
+        # Process directory
+        files = process_directory(args.input, pattern='*.trc', 
+                                   recursive=args.recursive,
+                                   sort_by=args.sort_files)
+        if not files:
+            return
+        print(f'# Processing {len(files)} files from directory: {args.input}', file=sys.stderr)
+    elif input_path.is_file():
+        files = [args.input]
+    else:
+        print(f'Error: File or directory not found: {args.input}', file=sys.stderr)
+        return
+    
+    # Aggregate events from all files
+    all_events = []
+    for file_path in files:
+        version, events = read_all_events(file_path)
+        all_events.extend(events)
+    
+    if len(files) > 1:
+        print(f'# Aggregated {len(all_events)} events from {len(files)} files', file=sys.stderr)
+    
+    # Compute statistics on aggregated events
+    global_stats, thread_stats = compute_stats(all_events, filt)
     
     # Export to files if requested
     if args.export_csv:
@@ -140,7 +249,7 @@ def cmd_callgraph(args):
     filt.max_depth = args.max_depth
     
     # Read events
-    version, events = read_all_events(args.file)
+    version, events = read_all_events(args.input)
     
     # Build call graph
     graph = build_call_graph(events, filt)
@@ -247,26 +356,32 @@ def cmd_query(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Trace analysis tool for trace_scope binary dumps',
+        description=f'Trace analysis tool for trace_scope binary dumps (v{__version__})',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:
   # Display trace with colors
-  trc_analyze.py display trace.bin --color
+  trc_analyze.py display trace.trc --color
+  
+  # Process directory of traces
+  trc_analyze.py display logs/ --recursive
   
   # Filter to specific functions
-  trc_analyze.py display trace.bin --filter-function "core_*"
+  trc_analyze.py display trace.trc --filter-function "core_*"
   
   # Show performance statistics
-  trc_analyze.py stats trace.bin
+  trc_analyze.py stats trace.trc
   
   # Export statistics to CSV
-  trc_analyze.py stats trace.bin --export-csv stats.csv
+  trc_analyze.py stats trace.trc --export-csv stats.csv
   
   # Sort by call count
-  trc_analyze.py stats trace.bin --sort-by calls
+  trc_analyze.py stats trace.trc --sort-by calls
         '''
     )
+    
+    # Add version flag
+    parser.add_argument('--version', action='version', version=f'trace-scope v{__version__}')
     
     # Create subparsers for commands
     subparsers = parser.add_subparsers(dest='command', help='Command to execute')
@@ -274,7 +389,7 @@ Examples:
     
     # === DISPLAY COMMAND ===
     parser_display = subparsers.add_parser('display', help='Pretty-print trace with filtering')
-    parser_display.add_argument('file', help='Binary trace file to process')
+    parser_display.add_argument('input', help='Binary trace file or directory to process')
     
     # Color options
     parser_display.add_argument('--color', '--colour', action='store_true',
@@ -312,11 +427,18 @@ Examples:
     parser_display.add_argument('--timestamp', action='store_true',
                                 help='Show absolute timestamps')
     
+    # Directory processing options
+    parser_display.add_argument('--recursive', '-r', action='store_true',
+                                help='Recursively search subdirectories for trace files')
+    parser_display.add_argument('--sort-files', choices=['chronological', 'name', 'size'], 
+                                default='chronological',
+                                help='Sort order for multiple files (default: chronological by mtime)')
+    
     parser_display.set_defaults(func=cmd_display)
     
     # === STATS COMMAND ===
     parser_stats = subparsers.add_parser('stats', help='Display performance statistics')
-    parser_stats.add_argument('file', help='Binary trace file to process')
+    parser_stats.add_argument('input', help='Binary trace file or directory to process')
     
     # Function filters (same as display)
     parser_stats.add_argument('--filter-function', '--include-function', action='append', default=[],
@@ -350,11 +472,18 @@ Examples:
     parser_stats.add_argument('--export-json', metavar='FILE',
                               help='Export statistics to JSON file')
     
+    # Directory processing options
+    parser_stats.add_argument('--recursive', '-r', action='store_true',
+                              help='Recursively search subdirectories for trace files')
+    parser_stats.add_argument('--sort-files', choices=['chronological', 'name', 'size'], 
+                              default='chronological',
+                              help='Sort order for multiple files (default: chronological by mtime)')
+    
     parser_stats.set_defaults(func=cmd_stats)
     
     # === CALLGRAPH COMMAND ===
     parser_callgraph = subparsers.add_parser('callgraph', help='Generate call graph')
-    parser_callgraph.add_argument('file', help='Binary trace file to process')
+    parser_callgraph.add_argument('input', help='Binary trace file to process')
     
     # Output format
     parser_callgraph.add_argument('--format', '-f', choices=['tree', 'dot'], default='tree',
@@ -464,7 +593,7 @@ Examples:
     
     # === QUERY COMMAND (placeholder) ===
     parser_query = subparsers.add_parser('query', help='Enhanced filtering/querying (coming soon)')
-    parser_query.add_argument('file', help='Binary trace file to process')
+    parser_query.add_argument('input', help='Binary trace file to process')
     parser_query.set_defaults(func=cmd_query)
     
     # Parse and execute

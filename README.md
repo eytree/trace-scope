@@ -1,5 +1,7 @@
 # trace-scope
 
+**Version:** 0.8.0-alpha
+
 A lightweight, header-only C++ library for function-scope tracing with per-thread ring buffers.
 
 ## Features
@@ -9,7 +11,9 @@ A lightweight, header-only C++ library for function-scope tracing with per-threa
 - **TRACE_LOG**: Stream-based logging (C++ iostream style, drop-in for stream macros)
 - **Per-thread ring buffers**: Lock-free writes, thread-safe flushing
 - **Immediate mode**: Real-time output for long-running processes
-- **Binary dump**: Compact binary format with Python pretty-printer
+- **Binary dump**: Compact `.trc` format with organized directory structures
+- **Directory organization**: Flat, by-date, or by-session layouts
+- **Batch processing**: Python analyzer processes directories of trace files
 - **DLL-safe**: Optional shared state across DLL boundaries
 - **Configurable output**: Timestamps, thread IDs, file/line info, function names
 - **Header-only**: Just include and use (default mode)
@@ -512,7 +516,7 @@ int main() {
     // Your code here...
     
     // Binary dump for detailed Python analysis
-    trace::dump_binary("trace.bin");
+    trace::dump_binary("trace.trc");
     
     // Stats automatically printed at exit
     return 0;
@@ -560,19 +564,19 @@ The Python post-processing tool provides more detailed analysis:
 
 ```bash
 # Display performance statistics
-python tools/trc_analyze.py stats trace.bin
+python tools/trc_analyze.py stats trace.trc
 
 # Sort by different metrics
-python tools/trc_analyze.py stats trace.bin --sort-by calls     # by call count
-python tools/trc_analyze.py stats trace.bin --sort-by avg       # by average time
-python tools/trc_analyze.py stats trace.bin --sort-by name      # alphabetically
+python tools/trc_analyze.py stats trace.trc --sort-by calls     # by call count
+python tools/trc_analyze.py stats trace.trc --sort-by avg       # by average time
+python tools/trc_analyze.py stats trace.trc --sort-by name      # alphabetically
 
 # Filter before computing stats
-python tools/trc_analyze.py stats trace.bin --filter-function "worker*"
+python tools/trc_analyze.py stats trace.trc --filter-function "worker*"
 
 # Export to CSV or JSON
-python tools/trc_analyze.py stats trace.bin --export-csv stats.csv
-python tools/trc_analyze.py stats trace.bin --export-json stats.json
+python tools/trc_analyze.py stats trace.trc --export-csv stats.csv
+python tools/trc_analyze.py stats trace.trc --export-json stats.json
 ```
 
 ### Memory Tracking
@@ -735,80 +739,140 @@ This approach requires modifying your build system but avoids the runtime setup 
 
 ## Binary Dump Format
 
-For compact storage and post-processing, the library provides automatic timestamped binary dumps to prevent data loss:
+For compact storage and post-processing, the library provides automatic timestamped binary dumps with configurable directory organization:
+
+### Simple Usage (Current Directory, Flat Layout)
 
 ```cpp
-// Automatic timestamped filename (recommended)
+// Automatic timestamped filename (default: current directory, flat layout)
 std::string filename = trace::dump_binary();
-// Returns: "trace_20251020_162817_821.bin"
+// Returns: "trace_20251020_162817_821.trc"
 
 // Custom prefix
 std::string filename = trace::dump_binary("myapp");
-// Returns: "myapp_20251020_103045_123.bin"
-
-// Configure default prefix
-trace::config.dump_prefix = "myproject";
-std::string filename = trace::dump_binary();
-// Returns: "myproject_20251020_103045_123.bin"
+// Returns: "myapp_20251020_103045_123.trc"
 ```
 
-**Benefits of Timestamped Dumps:**
+### Organized Output with Directory Structures
+
+```cpp
+// Flat layout - all files in one directory
+trace::config.output_dir = "logs";
+trace::config.output_layout = trace::Config::OutputLayout::Flat;
+std::string filename = trace::dump_binary();
+// Returns: "logs/trace_20251020_162817_821.trc"
+
+// ByDate layout - organized by date
+trace::config.output_layout = trace::Config::OutputLayout::ByDate;
+std::string filename = trace::dump_binary();
+// Returns: "logs/2025-10-20/trace_162817_821.trc"
+
+// BySession layout - organized by session with auto-increment
+trace::config.output_layout = trace::Config::OutputLayout::BySession;
+trace::config.current_session = 0;  // 0 = auto-increment
+std::string filename = trace::dump_binary();
+// Returns: "logs/session_001/trace_20251020_162817_821.trc"
+
+// Manual session number
+trace::config.current_session = 5;
+std::string filename = trace::dump_binary();
+// Returns: "logs/session_005/trace_20251020_162817_821.trc"
+```
+
+### Configuration via INI File
+
+```ini
+[dump]
+prefix = myapp
+suffix = .trc
+output_dir = logs
+layout = date      # Options: flat, date, session
+session = 0        # 0 = auto-increment
+```
+
+**Benefits:**
 - ✅ **No data loss**: Each call creates a new unique file
-- ✅ **Safe for long-running processes**: Periodic dumps don't overwrite previous snapshots
+- ✅ **Automatic directory creation**: Creates output directories if needed
+- ✅ **Organized by date**: Easy to find traces from specific days
+- ✅ **Session-based organization**: Group related trace runs together
+- ✅ **Auto-increment sessions**: Automatically finds highest session and increments
 - ✅ **Chronological ordering**: Files sort naturally by timestamp
 - ✅ **Millisecond precision**: Unique even with rapid dumps
+- ✅ **Descriptive extension**: `.trc` clearly indicates trace files
 
-**Filename Format:** `{prefix}_{YYYYMMDD}_{HHMMSS}_{milliseconds}.bin`
+**Filename Format:** `{prefix}_{YYYYMMDD}_{HHMMSS}_{milliseconds}{suffix}`
 
-See `examples/example_long_running.cpp` for periodic dump demonstration.
+See `examples/example_long_running.cpp` for periodic dump demonstration and `examples/example_test_v08.cpp` for directory layout examples.
 
 ### Python Post-Processing Tool
 
-The `tools/trc_analyze.py` tool provides powerful post-processing of binary trace dumps with multi-command interface for analysis, filtering, and visualization.
+The `tools/trc_analyze.py` tool provides powerful post-processing of binary trace dumps with multi-command interface for analysis, filtering, visualization, and batch processing.
 
 **Features:**
 - ✅ Thread-aware ANSI color output (matches runtime colors)
 - ✅ Wildcard filtering (function, file, depth, thread)
 - ✅ Include/exclude filter lists (exclude wins)
+- ✅ Directory batch processing (process multiple trace files)
+- ✅ Recursive subdirectory search
+- ✅ Chronological/name/size file sorting
 - ✅ Binary format versions 1 and 2 support
 - ✅ Auto-scaling duration units (ns/us/ms/s)
 - ✅ Visual indent markers for call depth
+- ✅ Version information (--version flag)
 
 **Basic Usage:**
 ```bash
-# Display trace
-python tools/trc_analyze.py display trace.bin
+# Check version
+python tools/trc_analyze.py --version
+
+# Display single trace file
+python tools/trc_analyze.py display trace.trc
+
+# Display all traces in a directory
+python tools/trc_analyze.py display logs/
+
+# Display all traces recursively (includes subdirectories)
+python tools/trc_analyze.py display logs/ --recursive
 
 # With thread-aware colors
-python tools/trc_analyze.py display trace.bin --color
+python tools/trc_analyze.py display trace.trc --color
 
 # Filter to specific functions
-python tools/trc_analyze.py display trace.bin --filter-function "core_*"
+python tools/trc_analyze.py display trace.trc --filter-function "core_*"
 
 # Exclude test functions
-python tools/trc_analyze.py display trace.bin --exclude-function "*_test" --exclude-function "debug_*"
+python tools/trc_analyze.py display trace.trc --exclude-function "*_test" --exclude-function "debug_*"
 
 # Limit depth
-python tools/trc_analyze.py display trace.bin --max-depth 10
+python tools/trc_analyze.py display trace.trc --max-depth 10
 
 # Filter by thread ID
-python tools/trc_analyze.py display trace.bin --filter-thread 0x1234
+python tools/trc_analyze.py display trace.trc --filter-thread 0x1234
 
 # Complex filtering with colors
-python tools/trc_analyze.py display trace.bin --color --max-depth 8 \
+python tools/trc_analyze.py display trace.trc --color --max-depth 8 \
     --filter-function "my_namespace::*" \
     --exclude-function "debug_*" \
     --exclude-file "*/test/*"
 
-# Show performance statistics
-python tools/trc_analyze.py stats trace.bin
+# Show performance statistics (single file)
+python tools/trc_analyze.py stats trace.trc
+
+# Show aggregated statistics from directory
+python tools/trc_analyze.py stats logs/ --recursive
+
+# Sort files by name before processing
+python tools/trc_analyze.py stats logs/ --sort-files name
 ```
 
 **Command-Line Options:**
 
 | Option | Description |
 |--------|-------------|
+| `--version` | Show version information |
 | `--color` | Enable thread-aware ANSI colors |
+| `--recursive` / `-r` | Recursively search subdirectories for trace files |
+| `--sort-files SORT` | Sort order for multiple files: chronological (default), name, size |
 | `--filter-function PATTERN` | Include functions matching pattern (wildcard `*`) |
 | `--exclude-function PATTERN` | Exclude functions matching pattern |
 | `--filter-file PATTERN` | Include files matching pattern |
@@ -929,7 +993,7 @@ Visualize function call relationships, call counts, and timing information.
 **Text Tree Output:**
 ```bash
 # Generate call graph as text tree
-python tools/trc_analyze.py callgraph trace.bin
+python tools/trc_analyze.py callgraph trace.trc
 
 # Output:
 # └── main calls=1 total=10.00 ms avg=10.00 ms
@@ -938,13 +1002,13 @@ python tools/trc_analyze.py callgraph trace.bin
 #     └── bar calls=2 total=3.40 ms avg=1.70 ms
 
 # Save to file
-python tools/trc_analyze.py callgraph trace.bin --output callgraph.txt
+python tools/trc_analyze.py callgraph trace.trc --output callgraph.txt
 ```
 
 **GraphViz DOT Format:**
 ```bash
 # Generate GraphViz DOT file
-python tools/trc_analyze.py callgraph trace.bin --format dot --output callgraph.dot
+python tools/trc_analyze.py callgraph trace.trc --format dot --output callgraph.dot
 
 # Generate PNG image (requires GraphViz installed)
 dot -Tpng callgraph.dot -o callgraph.png
@@ -978,7 +1042,7 @@ Compare two trace files to detect performance changes.
 **Basic Comparison:**
 ```bash
 # Compare baseline vs current
-python tools/trc_analyze.py compare baseline.bin current.bin
+python tools/trc_analyze.py compare baseline.trc current.trc
 
 # Output shows:
 # - Regressions (slower functions, higher memory)
@@ -990,16 +1054,16 @@ python tools/trc_analyze.py compare baseline.bin current.bin
 **Advanced Options:**
 ```bash
 # Set threshold (only report >=10% changes)
-python tools/trc_analyze.py compare baseline.bin current.bin --threshold 10
+python tools/trc_analyze.py compare baseline.trc current.trc --threshold 10
 
 # Show all results (not just top N)
-python tools/trc_analyze.py compare baseline.bin current.bin --show-all
+python tools/trc_analyze.py compare baseline.trc current.trc --show-all
 
 # Export to CSV/JSON
-python tools/trc_analyze.py compare baseline.bin current.bin --export-csv regression.csv
+python tools/trc_analyze.py compare baseline.trc current.trc --export-csv regression.csv
 
 # Fail if regressions found (for CI/CD)
-python tools/trc_analyze.py compare baseline.bin current.bin --fail-on-regression
+python tools/trc_analyze.py compare baseline.trc current.trc --fail-on-regression
 ```
 
 **Example Output:**
@@ -1043,10 +1107,10 @@ Compare execution paths between two trace runs to detect behavioral differences.
 **Basic Diff:**
 ```bash
 # Compare execution paths
-python tools/trc_analyze.py diff trace_a.bin trace_b.bin
+python tools/trc_analyze.py diff trace_a.trc trace_b.trc
 
 # Export to JSON
-python tools/trc_analyze.py diff old.bin new.bin --export-json diff_report.json
+python tools/trc_analyze.py diff old.trc new.trc --export-json diff_report.json
 ```
 
 **What It Detects:**
@@ -1068,14 +1132,14 @@ All post-processing commands support filtering:
 
 ```bash
 # Callgraph for core functions only
-python tools/trc_analyze.py callgraph trace.bin --filter-function "core_*"
+python tools/trc_analyze.py callgraph trace.trc --filter-function "core_*"
 
 # Compare specific subsystem
-python tools/trc_analyze.py compare baseline.bin current.bin \
+python tools/trc_analyze.py compare baseline.trc current.trc \
     --filter-file "src/networking/*"
 
 # Diff specific thread
-python tools/trc_analyze.py diff trace_a.bin trace_b.bin \
+python tools/trc_analyze.py diff trace_a.trc trace_b.trc \
     --filter-thread 0x1234
 ```
 
@@ -1149,8 +1213,9 @@ See `tools/` directory:
 
 **`trc_analyze.py`** - Trace analysis tool with multiple commands
 - Multi-command interface for display, stats, callgraph, compare, diff, query
-- Usage: `python tools/trc_analyze.py <command> trace.bin`
-- Commands: `display`, `stats` (more coming soon)
+- Usage: `python tools/trc_analyze.py <command> trace.trc`
+- Commands: `display`, `stats`, `callgraph`, `compare`, `diff`, `query`
+- Supports directory processing with `--recursive` flag
 - See "Binary Dump Format" section for details
 
 **`trace_instrument.py`** - Automatic code instrumentation
@@ -1407,8 +1472,8 @@ trace::config.track_memory = true;      // Optional RSS tracking
 trace::internal::ensure_stats_registered();  // Register handler
 
 // Python tool
-python tools/trc_analyze.py stats trace.bin --sort-by total
-python tools/trc_analyze.py stats trace.bin --export-csv stats.csv
+python tools/trc_analyze.py stats trace.trc --sort-by total
+python tools/trc_analyze.py stats trace.trc --export-csv stats.csv
 ```
 
 **Statistical Post-Processing** *(Implemented)*
@@ -1423,14 +1488,24 @@ python tools/trc_analyze.py stats trace.bin --export-csv stats.csv
 **Example:**
 ```bash
 # Call graph
-python tools/trc_analyze.py callgraph trace.bin --format dot -o callgraph.dot
+python tools/trc_analyze.py callgraph trace.trc --format dot -o callgraph.dot
 
 # Regression detection
-python tools/trc_analyze.py compare baseline.bin current.bin --threshold 10
+python tools/trc_analyze.py compare baseline.trc current.trc --threshold 10
 
 # Trace diff
-python tools/trc_analyze.py diff trace_a.bin trace_b.bin
+python tools/trc_analyze.py diff trace_a.trc trace_b.trc
 ```
+
+**Directory Organization & Batch Processing** *(Implemented - v0.8.0-alpha)*
+- ✅ .trc file extension for trace files
+- ✅ Configurable output directories (flat/date/session layouts)
+- ✅ Automatic directory creation
+- ✅ Session auto-increment
+- ✅ Python analyzer processes directories of traces
+- ✅ Recursive subdirectory search
+- ✅ Chronological/name/size file sorting
+- See Binary Dump Format section above
 
 ### Near-Term Features
 
