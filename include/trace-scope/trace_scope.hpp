@@ -111,15 +111,17 @@
 #endif
 
 // Version information - keep in sync with VERSION file at project root
-#define TRACE_SCOPE_VERSION "0.8.0-alpha"
+#define TRACE_SCOPE_VERSION "0.9.0-alpha"
 #define TRACE_SCOPE_VERSION_MAJOR 0
-#define TRACE_SCOPE_VERSION_MINOR 8
+#define TRACE_SCOPE_VERSION_MINOR 9
 #define TRACE_SCOPE_VERSION_PATCH 0
 
 namespace trace {
 
 // Forward declarations
 struct Config;
+struct AsyncQueue;
+inline AsyncQueue& async_queue();
 
 /**
  * @brief Tracing output mode.
@@ -315,6 +317,10 @@ struct Config {
     TracingMode mode = TracingMode::Buffered;  ///< Tracing output mode (default: Buffered)
     FILE* immediate_out = nullptr;    ///< Separate output stream for immediate output in Hybrid mode (nullptr = use 'out')
     float auto_flush_threshold = 0.9f; ///< Auto-flush when buffer reaches this fraction full in Hybrid mode (0.0-1.0, default 0.9 = 90%)
+    
+    // Async immediate mode configuration
+    int immediate_flush_interval_ms = 1;  ///< Flush interval for async immediate mode (default: 1ms, 0 = flush every event)
+    size_t immediate_queue_size = 128;    ///< Max queue size hint for async immediate mode (default: 128)
 
     // Prefix content control
     bool include_file_line = true;    ///< Include filename:line in prefix block
@@ -516,6 +522,161 @@ inline uint64_t get_current_rss() {
 } // namespace memory_utils
 
 /**
+ * @brief Async queue for immediate mode with background writer thread.
+ * 
+ * MPSC (Multi-Producer Single-Consumer) queue for non-blocking event writes.
+ * Traced threads enqueue events without blocking on I/O. Background writer
+ * thread drains queue and writes events to file with configurable batching.
+ */
+struct AsyncQueue {
+    std::mutex mtx;                             ///< Protects queue access
+    std::vector<Event> queue;                   ///< Event queue
+    std::condition_variable cv;                 ///< Notifies writer thread of new events
+    std::atomic<bool> running{false};           ///< Writer thread running flag
+    std::thread writer_thread;                  ///< Background writer thread
+    FILE* output_file = nullptr;                ///< Output file stream
+    std::atomic<uint64_t> enqueue_count{0};     ///< Total events enqueued (for flush_now)
+    std::atomic<uint64_t> write_count{0};       ///< Total events written (for flush_now)
+    
+    // Configuration (copied from Config on start())
+    int flush_interval_ms = 1;                  ///< Flush interval in milliseconds
+    size_t batch_size = 128;                    ///< Max events per batch write
+    
+    /**
+     * @brief Constructor (does nothing - call start() to begin).
+     */
+    AsyncQueue() = default;
+    
+    /**
+     * @brief Destructor: Stops writer thread and flushes remaining events.
+     */
+    ~AsyncQueue() {
+        stop();
+    }
+    
+    /**
+     * @brief Start the async writer thread.
+     * @param out Output file stream
+     */
+    inline void start(FILE* out) {
+        if (running.load()) return;  // Already started
+        
+        output_file = out;
+        running.store(true);
+        writer_thread = std::thread([this]() { writer_loop(); });
+    }
+    
+    /**
+     * @brief Stop the writer thread and flush remaining events.
+     */
+    inline void stop() {
+        if (!running.load()) return;  // Not running
+        
+        running.store(false);
+        cv.notify_one();
+        
+        if (writer_thread.joinable()) {
+            writer_thread.join();
+        }
+    }
+    
+    /**
+     * @brief Enqueue an event (non-blocking, called from traced threads).
+     * @param e Event to enqueue
+     */
+    inline void enqueue(const Event& e) {
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            queue.push_back(e);
+        }
+        enqueue_count.fetch_add(1, std::memory_order_relaxed);
+        cv.notify_one();
+    }
+    
+    /**
+     * @brief Force immediate flush of queue (blocks until empty).
+     * 
+     * Waits up to 1 second for queue to drain. Used when synchronous
+     * semantics are needed (e.g., before crash, in tests).
+     */
+    inline void flush_now() {
+        // Wake up writer thread
+        cv.notify_one();
+        
+        // Spin-wait until queue is drained (or timeout)
+        auto start = std::chrono::steady_clock::now();
+        while (enqueue_count.load(std::memory_order_relaxed) != 
+               write_count.load(std::memory_order_relaxed)) {
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+            
+            // Timeout after 1 second
+            auto elapsed = std::chrono::steady_clock::now() - start;
+            if (elapsed > std::chrono::seconds(1)) {
+                std::fprintf(stderr, "trace-scope: Warning: flush_immediate_queue() timeout after 1s\n");
+                break;
+            }
+        }
+    }
+    
+private:
+    /**
+     * @brief Background writer thread loop.
+     * 
+     * Waits for events with timeout (flush_interval_ms), drains queue,
+     * and writes all events to file in a batch.
+     */
+    inline void writer_loop() {
+        while (running.load(std::memory_order_relaxed)) {
+            std::vector<Event> local;
+            
+            {
+                std::unique_lock<std::mutex> lock(mtx);
+                
+                // Wait with timeout for new events
+                cv.wait_for(lock, std::chrono::milliseconds(flush_interval_ms),
+                           [this]() { 
+                               return !queue.empty() || !running.load(std::memory_order_relaxed); 
+                           });
+                
+                // Swap queues (fast, O(1))
+                local.swap(queue);
+            }
+            
+            // Write all events (outside lock - no contention with enqueue)
+            for (const auto& e : local) {
+                if (output_file) {
+                    print_event(e, output_file);
+                }
+            }
+            
+            // Flush to disk and update write counter
+            if (!local.empty() && output_file) {
+                std::fflush(output_file);
+                write_count.fetch_add(local.size(), std::memory_order_relaxed);
+            }
+        }
+        
+        // Final flush on shutdown - ensure no events lost
+        std::vector<Event> remaining;
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            remaining.swap(queue);
+        }
+        
+        for (const auto& e : remaining) {
+            if (output_file) {
+                print_event(e, output_file);
+            }
+        }
+        
+        if (!remaining.empty() && output_file) {
+            std::fflush(output_file);
+            write_count.fetch_add(remaining.size(), std::memory_order_relaxed);
+        }
+    }
+};
+
+/**
  * @brief Per-thread ring buffer for trace events.
  * 
  * Each thread gets its own Ring (thread_local storage). Events are written
@@ -686,16 +847,29 @@ struct Ring {
             // Check if we need to auto-flush BEFORE acquiring lock
             bool needs_flush = should_auto_flush();
             
-            // Also print immediately for real-time visibility
+            // Also print immediately for real-time visibility (using async queue)
             {
-                static std::mutex io_mtx;
-                std::lock_guard<std::mutex> lock(io_mtx);
-                FILE* imm_out = get_config().immediate_out;
-                if (!imm_out) {
-                    imm_out = get_config().out ? get_config().out : stdout;
-                }
-                print_event(e, imm_out);
-                std::fflush(imm_out);
+                // Ensure async queue is started (thread-safe via std::call_once)
+                static std::once_flag async_init_flag;
+                std::call_once(async_init_flag, []() {
+                    FILE* imm_out = get_config().immediate_out;
+                    if (!imm_out) {
+                        imm_out = get_config().out ? get_config().out : stdout;
+                    }
+                    async_queue().flush_interval_ms = get_config().immediate_flush_interval_ms;
+                    async_queue().batch_size = get_config().immediate_queue_size;
+                    async_queue().start(imm_out);
+                    
+                    // Register atexit handler to stop async queue on exit
+                    std::atexit([]() {
+                        if (get_config().mode == TracingMode::Hybrid) {
+                            async_queue().stop();  // Stops thread and flushes remaining events
+                        }
+                    });
+                });
+                
+                // Enqueue event for async immediate output (non-blocking)
+                async_queue().enqueue(e);
             }
             
             // Auto-flush if buffer is near capacity (outside lock to avoid deadlock)
@@ -703,13 +877,26 @@ struct Ring {
                 flush_current_thread();
             }
         }
-        // Immediate mode: print directly without buffering
+        // Immediate mode: async queue with background writer (non-blocking)
         else if (get_config().mode == TracingMode::Immediate) {
-            static std::mutex io_mtx;
-            std::lock_guard<std::mutex> lock(io_mtx);
-            FILE* out = get_config().out ? get_config().out : stdout;
-            print_event(e, out);
-            std::fflush(out);
+            // Ensure async queue is started (thread-safe via std::call_once)
+            static std::once_flag async_init_flag;
+            std::call_once(async_init_flag, []() {
+                FILE* out = get_config().out ? get_config().out : stdout;
+                async_queue().flush_interval_ms = get_config().immediate_flush_interval_ms;
+                async_queue().batch_size = get_config().immediate_queue_size;
+                async_queue().start(out);
+                
+                // Register atexit handler to stop async queue on exit
+                std::atexit([]() {
+                    if (get_config().mode == TracingMode::Immediate) {
+                        async_queue().stop();  // Stops thread and flushes remaining events
+                    }
+                });
+            });
+            
+            // Enqueue event (non-blocking, fast)
+            async_queue().enqueue(e);
         }
         // Buffered mode: write to ring buffer only (single or double-buffer mode)
         else {
@@ -750,15 +937,21 @@ struct Ring {
         
         // Hybrid mode: buffer AND print immediately
         if (get_config().mode == TracingMode::Hybrid) {
-            // Write to buffer first (via write())
-            write(EventType::Msg, current_func, file, line);
-            int buf_idx = 0;
-#if TRACE_DOUBLE_BUFFER
-            if (get_config().use_double_buffering) {
-                buf_idx = active_buf.load(std::memory_order_relaxed);
-            }
-#endif
-            Event& e = buf[buf_idx][(head[buf_idx] + TRACE_RING_CAP - 1) % TRACE_RING_CAP];
+            // Create event and format message
+            const auto now = std::chrono::system_clock::now().time_since_epoch();
+            uint64_t now_ns = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
+            
+            Event e;
+            e.ts_ns = now_ns;
+            e.func = current_func;
+            e.file = file;
+            e.line = line;
+            e.tid = tid;
+            e.color_offset = color_offset;
+            e.type = EventType::Msg;
+            e.depth = depth;
+            e.dur_ns = 0;
+            e.memory_rss = 0;
             
             // Format the message
             if (!fmt) {
@@ -774,9 +967,28 @@ struct Ring {
                 }
             }
             
-            // Note: write() already handles immediate output and auto-flush for hybrid mode
+            // Write to buffer
+            int buf_idx = 0;
+#if TRACE_DOUBLE_BUFFER
+            if (get_config().use_double_buffering) {
+                buf_idx = active_buf.load(std::memory_order_relaxed);
+            }
+#endif
+            buf[buf_idx][head[buf_idx]] = e;
+            head[buf_idx] = (head[buf_idx] + 1) % TRACE_RING_CAP;
+            if (head[buf_idx] == 0) {
+                ++wraps[buf_idx];
+            }
+            
+            // Also enqueue to async queue for immediate output
+            async_queue().enqueue(e);
+            
+            // Check for auto-flush
+            if (should_auto_flush()) {
+                flush_current_thread();
+            }
         }
-        // Immediate mode: format and print directly
+        // Immediate mode: format and enqueue to async queue (non-blocking)
         else if (get_config().mode == TracingMode::Immediate) {
             const auto now = std::chrono::system_clock::now().time_since_epoch();
             uint64_t now_ns = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
@@ -787,9 +999,11 @@ struct Ring {
             e.file = file;
             e.line = line;
             e.tid = tid;
+            e.color_offset = color_offset;
             e.type = EventType::Msg;
             e.depth = depth;
             e.dur_ns = 0;
+            e.memory_rss = 0;
             
             if (!fmt) {
                 e.msg[0] = 0;
@@ -804,11 +1018,8 @@ struct Ring {
                 }
             }
             
-            static std::mutex io_mtx;
-            std::lock_guard<std::mutex> lock(io_mtx);
-            FILE* out = get_config().out ? get_config().out : stdout;
-            print_event(e, out);
-            std::fflush(out);
+            // Enqueue to async queue (non-blocking, fast)
+            async_queue().enqueue(e);
         }
         // Buffered mode: write to ring buffer only
         else {
@@ -1126,6 +1337,8 @@ inline bool Config::load_from_file(const char* path) {
             else if (key == "auto_flush_at_exit") auto_flush_at_exit = ini_parser::parse_bool(value);
             else if (key == "use_double_buffering") use_double_buffering = ini_parser::parse_bool(value);
             else if (key == "auto_flush_threshold") auto_flush_threshold = ini_parser::parse_float(value);
+            else if (key == "immediate_flush_interval_ms") immediate_flush_interval_ms = ini_parser::parse_int(value);
+            else if (key == "immediate_queue_size") immediate_queue_size = (size_t)ini_parser::parse_int(value);
         }
         else if (current_section == "filter") {
             if (key == "include_function") {
@@ -1314,6 +1527,19 @@ inline Registry& registry() {
     return r;
 }
 #endif
+
+/**
+ * @brief Get the global async queue for immediate mode.
+ * 
+ * Single global instance shared across all threads. The queue is started
+ * automatically on first use in immediate or hybrid mode.
+ * 
+ * @return Reference to the global AsyncQueue
+ */
+inline AsyncQueue& async_queue() {
+    static AsyncQueue q;
+    return q;
+}
 
 /**
  * @brief Ring destructor implementation.
@@ -1622,6 +1848,63 @@ inline void flush_all() {
  */
 inline void flush_current_thread() {
     flush_ring(thread_ring());
+}
+
+/**
+ * @brief Force immediate flush of async queue.
+ * 
+ * Blocks until all queued events in async immediate mode are written to file.
+ * Only relevant when using Immediate or Hybrid mode (which use async queue).
+ * 
+ * Use this when synchronous semantics are needed:
+ * - Before critical operations that might crash
+ * - In test code to ensure output is written
+ * - When switching output files
+ * 
+ * @note Waits up to 1 second for queue to drain, then times out with warning.
+ * 
+ * @example
+ *   trace::config.mode = TracingMode::Immediate;
+ *   TRACE_SCOPE();
+ *   critical_operation();
+ *   trace::flush_immediate_queue();  // Ensure events written before proceeding
+ */
+inline void flush_immediate_queue() {
+    async_queue().flush_now();
+}
+
+/**
+ * @brief Manually start async immediate mode with custom output.
+ * 
+ * Called automatically on first trace in Immediate or Hybrid mode, but can
+ * be called explicitly to control startup timing or change output file.
+ * 
+ * @param out Output file (default: use config.out)
+ * 
+ * @example
+ *   FILE* custom_out = fopen("immediate.log", "w");
+ *   trace::start_async_immediate(custom_out);
+ *   trace::config.mode = TracingMode::Immediate;
+ *   TRACE_SCOPE();  // Uses custom_out
+ */
+inline void start_async_immediate(FILE* out = nullptr) {
+    if (!out) out = get_config().out ? get_config().out : stdout;
+    async_queue().flush_interval_ms = get_config().immediate_flush_interval_ms;
+    async_queue().batch_size = get_config().immediate_queue_size;
+    async_queue().start(out);
+}
+
+/**
+ * @brief Stop async immediate mode and flush remaining events.
+ * 
+ * Stops the background writer thread and ensures all queued events are written.
+ * Automatically called at program exit via atexit handler.
+ * 
+ * Useful for explicitly stopping async mode when switching modes or
+ * shutting down tracing subsystem.
+ */
+inline void stop_async_immediate() {
+    async_queue().stop();
 }
 
 /**

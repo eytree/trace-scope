@@ -45,3 +45,9 @@ target_link_libraries(example_long_running PRIVATE trace_scope)
 add_executable(example_test_v08 example_test_v08.cpp)
 target_link_libraries(example_test_v08 PRIVATE trace_scope)
 
+add_executable(example_async_immediate example_async_immediate.cpp)
+target_link_libraries(example_async_immediate PRIVATE trace_scope)
+
+add_executable(example_async_benchmark example_async_benchmark.cpp)
+target_link_libraries(example_async_benchmark PRIVATE trace_scope)
+
