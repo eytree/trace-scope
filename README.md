@@ -1142,7 +1142,11 @@ See `tools/` directory:
 **Python Tool Tests:**
 - `test_trace_instrument.py` - Unit tests for instrumentation tool (11 tests)
 - `test_trc_analyze.py` - Unit tests for binary parser and filtering (10 tests)
-- Both require Python 3.6+
+- `test_trc_callgraph.py` - Unit tests for call graph generation (5 tests)
+- `test_trc_compare.py` - Unit tests for regression detection (3 tests)
+- `test_trc_diff.py` - Unit tests for trace diff (4 tests)
+- All require Python 3.6+ (standard library only - no pip install needed)
+- See `tools/requirements.txt` for details
 - Run tests to verify tools work correctly on your system
 
 ## Building
@@ -1170,7 +1174,9 @@ cmake --build .
 
 **Python Tools** (optional):
 - Python 3.6+ (for trc_analyze.py, trace_instrument.py)
-- No external dependencies (uses only standard library)
+- **Zero external dependencies** - uses only Python standard library
+- See `tools/requirements.txt` for details and optional enhancements
+- Optional: GraphViz (for rendering call graph DOT files to PNG/SVG)
 
 ## License
 
