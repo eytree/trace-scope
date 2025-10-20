@@ -6,8 +6,63 @@ This document tracks major features, design decisions, and implementation milest
 
 ## October 20, 2025
 
-### Performance Metrics System
+### Python Tool Refactoring - Multi-Command Architecture
 **Commit:** (pending)  
+**Breaking Change:** `trc_pretty.py` renamed to `trc_analyze.py` with subcommand structure
+
+**Problem:** The Python tool (`trc_pretty.py`) was growing in functionality and needed better organization for upcoming statistical post-processing features (call graphs, regression detection, trace diff).
+
+**Solution:** Refactored Python tooling into modular, extensible architecture:
+
+**Refactoring Changes:**
+- Renamed `tools/trc_pretty.py` → `tools/trc_analyze.py`
+- Renamed `tools/test_trc_pretty.py` → `tools/test_trc_analyze.py`
+- Created `tools/trc_common.py` - Shared utilities module:
+  - Binary format reading (version 1 & 2)
+  - Event filtering (`EventFilter` class)
+  - Statistics computation
+  - Color handling (ANSI codes)
+  - Format helpers (duration, memory)
+  - CSV/JSON export functions
+
+**New Subcommand Structure:**
+```bash
+trc_analyze.py <command> [OPTIONS]
+
+Commands:
+  display    Pretty-print trace with filtering (replaces old default behavior)
+  stats      Performance metrics (replaces --stats flag)
+  callgraph  Call graph generation (coming soon)
+  compare    Performance regression detection (coming soon)
+  diff       Trace diff between runs (coming soon)
+  query      Enhanced filtering/querying (coming soon)
+```
+
+**Migration Guide:**
+- Old: `python trc_pretty.py trace.bin`
+- New: `python trc_analyze.py display trace.bin`
+
+- Old: `python trc_pretty.py trace.bin --stats`
+- New: `python trc_analyze.py stats trace.bin`
+
+**Benefits:**
+- Cleaner command-line interface
+- Modular code organization (shared utilities in `trc_common.py`)
+- Easier to add new analysis features
+- Better separation of concerns
+- Foundation for advanced post-processing (call graphs, regression detection, etc.)
+
+**Files Modified:**
+- `tools/trc_pretty.py` → `tools/trc_analyze.py` (renamed, restructured)
+- `tools/test_trc_pretty.py` → `tools/test_trc_analyze.py` (renamed, updated imports)
+- `tools/trc_common.py` (new) - Shared utilities
+- `README.md` - Updated all references from `trc_pretty.py` to `trc_analyze.py`
+- `HISTORY.md` - This entry
+
+---
+
+### Performance Metrics System
+**Commit:** `92848ac`  
 **Feature:** Zero-overhead performance metrics with memory tracking
 
 **Problem:** Need to identify performance hotspots, measure function call counts/durations, and track memory usage without adding overhead during tracing.

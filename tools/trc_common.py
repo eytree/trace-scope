@@ -1,34 +1,23 @@
 #!/usr/bin/env python3
 """
-Pretty-printer for trace_scope binary dump files with filtering and colors.
+Common utilities for trace_scope binary format parsing and analysis.
 
-Binary format (TRCLOG10):
-  Version 1: type(1) + tid(4) + ts_ns(8) + depth(4) + dur_ns(8) +
-             file_len(2) + file + func_len(2) + func + msg_len(2) + msg + line(4)
-  
-  Version 2: type(1) + tid(4) + color_offset(1) + ts_ns(8) + depth(4) + dur_ns(8) +
-             file_len(2) + file + func_len(2) + func + msg_len(2) + msg + line(4)
-
-Features:
-  - Thread-aware ANSI color output (matches C++ tracer)
-  - Wildcard filtering by function name, file path, depth, and thread ID
-  - Include/exclude filter lists (exclude wins)
-  - Compatible with versions 1 and 2
-
-Usage:
-  trc_pretty.py trace.bin [OPTIONS]
-  
-Examples:
-  trc_pretty.py trace.bin --color
-  trc_pretty.py trace.bin --filter-function "core_*" --exclude-function "*_test"
-  trc_pretty.py trace.bin --max-depth 10 --filter-thread 0x1234
+Shared functionality:
+- Binary format reading (version 1 & 2 support)
+- Event filtering (EventFilter class)
+- Statistics computation
+- Color handling (ANSI codes)
+- Format helpers (duration, memory)
 """
 
 import struct
-import sys
-import argparse
 import re
 
+
+# Event types (must match C++ EventType enum)
+EVENT_TYPE_ENTER = 0
+EVENT_TYPE_EXIT = 1
+EVENT_TYPE_MSG = 2
 
 # ANSI color codes (matches C++ colors)
 COLORS = [
@@ -44,6 +33,8 @@ COLORS = [
 RESET = '\033[0m'
 
 
+# === Binary Format Reading ===
+
 def readn(f, n):
     """Read exactly n bytes or raise EOFError."""
     b = f.read(n)
@@ -57,6 +48,102 @@ def read_str(f):
     (n,) = struct.unpack('<H', readn(f, 2))
     return readn(f, n).decode('utf-8', errors='replace') if n > 0 else ''
 
+
+def read_header(f):
+    """
+    Read trace file header and return version.
+    
+    Returns:
+        version (int): Binary format version (1 or 2)
+    
+    Raises:
+        ValueError: If magic or version is invalid
+    """
+    magic = readn(f, 8)
+    if magic != b'TRCLOG10':
+        raise ValueError(f'Bad magic (expected TRCLOG10, got {magic})')
+    
+    (version, padding) = struct.unpack('<II', readn(f, 8))
+    if version < 1 or version > 2:
+        raise ValueError(f'Unsupported version {version} (expected 1 or 2)')
+    
+    return version
+
+
+def read_event(f, version):
+    """
+    Read a single event based on format version.
+    
+    Args:
+        f: File object to read from
+        version: Binary format version (1 or 2)
+    
+    Returns:
+        dict: Event with keys: type, tid, color_offset, ts_ns, depth,
+              dur_ns, memory_rss, file, func, msg, line
+    """
+    (typ,) = struct.unpack('<B', readn(f, 1))
+    (tid,) = struct.unpack('<I', readn(f, 4))
+    
+    if version >= 2:
+        (color_offset,) = struct.unpack('<B', readn(f, 1))
+    else:
+        color_offset = 0  # Default for version 1
+    
+    (ts_ns,) = struct.unpack('<Q', readn(f, 8))
+    (depth,) = struct.unpack('<I', readn(f, 4))
+    (dur_ns,) = struct.unpack('<Q', readn(f, 8))
+    
+    # Read memory_rss field (added in version 2)
+    if version >= 2:
+        (memory_rss,) = struct.unpack('<Q', readn(f, 8))
+    else:
+        memory_rss = 0  # Default for version 1
+    
+    file = read_str(f)
+    func = read_str(f)
+    msg = read_str(f)
+    
+    (line,) = struct.unpack('<I', readn(f, 4))
+    
+    return {
+        'type': typ,
+        'tid': tid,
+        'color_offset': color_offset,
+        'ts_ns': ts_ns,
+        'depth': depth,
+        'dur_ns': dur_ns,
+        'memory_rss': memory_rss,
+        'file': file,
+        'func': func,
+        'msg': msg,
+        'line': line
+    }
+
+
+def read_all_events(filename):
+    """
+    Read all events from a trace file.
+    
+    Args:
+        filename: Path to binary trace file
+    
+    Returns:
+        tuple: (version, events_list)
+    """
+    events = []
+    with open(filename, 'rb') as f:
+        version = read_header(f)
+        try:
+            while True:
+                event = read_event(f, version)
+                events.append(event)
+        except EOFError:
+            pass
+    return version, events
+
+
+# === Filtering ===
 
 def wildcard_match(pattern, text):
     """Simple wildcard matching (* matches zero or more chars)."""
@@ -121,46 +208,7 @@ class EventFilter:
         return True
 
 
-def read_event(f, version):
-    """Read a single event based on format version."""
-    (typ,) = struct.unpack('<B', readn(f, 1))
-    (tid,) = struct.unpack('<I', readn(f, 4))
-    
-    if version >= 2:
-        (color_offset,) = struct.unpack('<B', readn(f, 1))
-    else:
-        color_offset = 0  # Default for version 1
-    
-    (ts_ns,) = struct.unpack('<Q', readn(f, 8))
-    (depth,) = struct.unpack('<I', readn(f, 4))
-    (dur_ns,) = struct.unpack('<Q', readn(f, 8))
-    
-    # Read memory_rss field (added in version 2)
-    if version >= 2:
-        (memory_rss,) = struct.unpack('<Q', readn(f, 8))
-    else:
-        memory_rss = 0  # Default for version 1
-    
-    file = read_str(f)
-    func = read_str(f)
-    msg = read_str(f)
-    
-    (line,) = struct.unpack('<I', readn(f, 4))
-    
-    return {
-        'type': typ,
-        'tid': tid,
-        'color_offset': color_offset,
-        'ts_ns': ts_ns,
-        'depth': depth,
-        'dur_ns': dur_ns,
-        'memory_rss': memory_rss,
-        'file': file,
-        'func': func,
-        'msg': msg,
-        'line': line
-    }
-
+# === Formatting ===
 
 def format_duration(dur_ns):
     """Format duration with auto-scaled units matching C++ output."""
@@ -195,8 +243,21 @@ def get_color(event, use_color):
     return COLORS[color_idx], RESET
 
 
+# === Statistics ===
+
 def compute_stats(events, filter_obj):
-    """Compute performance statistics from events."""
+    """
+    Compute performance statistics from events.
+    
+    Args:
+        events: List of event dictionaries
+        filter_obj: EventFilter instance
+    
+    Returns:
+        tuple: (global_stats, thread_stats)
+            global_stats: dict of func_name -> {calls, total_ns, min_ns, max_ns, avg_ns, memory_delta}
+            thread_stats: dict of tid -> {func_name -> {calls, total_ns, min_ns, max_ns, avg_ns, memory_delta}}
+    """
     # Apply filters first
     filtered_events = [e for e in events if filter_obj.should_trace(e)]
     
@@ -208,7 +269,7 @@ def compute_stats(events, filter_obj):
     
     for event in filtered_events:
         # Only count Exit events (have duration)
-        if event['type'] != 1:  # Exit
+        if event['type'] != EVENT_TYPE_EXIT:
             continue
         
         func = event['func']
@@ -353,7 +414,7 @@ def export_csv(global_stats, thread_stats, filename):
                     stats['memory_delta']
                 ])
     
-    print(f"✓ Statistics exported to {filename}")
+    print(f"Statistics exported to {filename}")
 
 
 def export_json(global_stats, thread_stats, filename):
@@ -383,202 +444,5 @@ def export_json(global_stats, thread_stats, filename):
     with open(filename, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
     
-    print(f"✓ Statistics exported to {filename}")
+    print(f"Statistics exported to {filename}")
 
-
-def print_event(event, use_color=False, show_timing=True, show_timestamp=False):
-    """Format and print a single event."""
-    color_start, color_end = get_color(event, use_color)
-    
-    # Thread ID
-    tid_str = f"({event['tid']:08x}) "
-    
-    # Timestamp (optional)
-    ts_str = f"[{event['ts_ns']}] " if show_timestamp else ""
-    
-    # Indent markers
-    indent = '| ' * max(event['depth'], 0)
-    
-    # Format based on event type
-    typ = event['type']
-    if typ == 0:  # Enter
-        line = f"{ts_str}{tid_str}{color_start}{indent}-> {event['func']}{color_end} ({event['file']}:{event['line']})"
-    elif typ == 1:  # Exit
-        timing = f"  [{format_duration(event['dur_ns'])}]" if show_timing else ""
-        line = f"{ts_str}{tid_str}{color_start}{indent}<- {event['func']}{timing}{color_end} ({event['file']}:{event['line']})"
-    else:  # Msg
-        line = f"{ts_str}{tid_str}{color_start}{indent}- {event['msg']}{color_end} ({event['file']}:{event['line']})"
-    
-    print(line)
-
-
-def process_trace(path, filt, use_color=False, show_timing=True, show_timestamp=False):
-    """Parse and display a trace binary file with filters."""
-    with open(path, 'rb') as f:
-        # Read header
-        magic = readn(f, 8)
-        if magic != b'TRCLOG10':
-            raise SystemExit(f'Error: Bad magic (expected TRCLOG10, got {magic})')
-        
-        version, padding = struct.unpack('<II', readn(f, 8))
-        if version < 1 or version > 2:
-            raise SystemExit(f'Error: Unsupported version {version} (expected 1 or 2)')
-        
-        # Print version info
-        print(f'# Binary format version: {version}', file=sys.stderr)
-        
-        # Read and filter events
-        total_count = 0
-        displayed_count = 0
-        
-        try:
-            while True:
-                event = read_event(f, version)
-                total_count += 1
-                
-                if filt.should_trace(event):
-                    print_event(event, use_color, show_timing, show_timestamp)
-                    displayed_count += 1
-        except EOFError:
-            pass
-    
-    # Summary
-    print(f'\n# Processed {total_count} events, displayed {displayed_count}', file=sys.stderr)
-    if total_count != displayed_count:
-        filtered = total_count - displayed_count
-        pct = (filtered / total_count * 100) if total_count > 0 else 0
-        print(f'# Filtered out {filtered} events ({pct:.1f}%)', file=sys.stderr)
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description='Pretty-print trace_scope binary dumps with filtering and colors',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog='''
-Examples:
-  # Basic usage
-  trc_pretty.py trace.bin
-  
-  # With colors
-  trc_pretty.py trace.bin --color
-  
-  # Filter to specific functions
-  trc_pretty.py trace.bin --filter-function "core_*"
-  
-  # Exclude test functions
-  trc_pretty.py trace.bin --exclude-function "*_test"
-  
-  # Multiple filters
-  trc_pretty.py trace.bin --color --max-depth 10 \\
-      --filter-function "my_namespace::*" \\
-      --exclude-function "debug_*"
-  
-  # Filter by thread ID
-  trc_pretty.py trace.bin --filter-thread 0x12345678
-        '''
-    )
-    
-    parser.add_argument('file', help='Binary trace file to process')
-    
-    # Color options
-    parser.add_argument('--color', '--colour', action='store_true',
-                        help='Enable ANSI color output (thread-aware)')
-    parser.add_argument('--no-color', '--no-colour', dest='color', action='store_false',
-                        help='Disable color output (default)')
-    
-    # Function filters
-    parser.add_argument('--filter-function', '--include-function', action='append', default=[],
-                        help='Include functions matching pattern (wildcard *)')
-    parser.add_argument('--exclude-function', action='append', default=[],
-                        help='Exclude functions matching pattern (wildcard *)')
-    
-    # File filters
-    parser.add_argument('--filter-file', '--include-file', action='append', default=[],
-                        help='Include files matching pattern (wildcard *)')
-    parser.add_argument('--exclude-file', action='append', default=[],
-                        help='Exclude files matching pattern (wildcard *)')
-    
-    # Thread filters
-    parser.add_argument('--filter-thread', '--include-thread', action='append', default=[],
-                        type=lambda x: int(x, 0),  # Supports 0x hex notation
-                        help='Include specific thread IDs (hex: 0x1234 or decimal)')
-    parser.add_argument('--exclude-thread', action='append', default=[],
-                        type=lambda x: int(x, 0),
-                        help='Exclude specific thread IDs')
-    
-    # Depth filter
-    parser.add_argument('--max-depth', type=int, default=-1,
-                        help='Maximum call depth to display (-1 = unlimited)')
-    
-    # Output options
-    parser.add_argument('--no-timing', action='store_true',
-                        help='Hide duration timing for Exit events')
-    parser.add_argument('--timestamp', action='store_true',
-                        help='Show absolute timestamps')
-    
-    # Stats options
-    parser.add_argument('--stats', '--metrics', action='store_true',
-                        help='Display performance statistics instead of trace')
-    parser.add_argument('--sort-by', choices=['total', 'calls', 'avg', 'name'], default='total',
-                        help='Sort statistics by: total time, call count, avg time, or function name')
-    parser.add_argument('--export-csv', metavar='FILE',
-                        help='Export statistics to CSV file')
-    parser.add_argument('--export-json', metavar='FILE',
-                        help='Export statistics to JSON file')
-    
-    args = parser.parse_args()
-    
-    # Build filter from args
-    filt = EventFilter()
-    filt.include_functions = args.filter_function
-    filt.exclude_functions = args.exclude_function
-    filt.include_files = args.filter_file
-    filt.exclude_files = args.exclude_file
-    filt.include_threads = args.filter_thread
-    filt.exclude_threads = args.exclude_thread
-    filt.max_depth = args.max_depth
-    
-    # Process file
-    if args.stats:
-        # Stats mode: compute and display statistics
-        with open(args.file, 'rb') as f:
-            magic = readn(f, 8)
-            if magic != b'TRCLOG10':
-                raise SystemExit(f'Error: Bad magic (expected TRCLOG10, got {magic})')
-            
-            version, padding = struct.unpack('<II', readn(f, 8))
-            if version < 1 or version > 2:
-                raise SystemExit(f'Error: Unsupported version {version} (expected 1 or 2)')
-            
-            # Read all events
-            events = []
-            try:
-                while True:
-                    event = read_event(f, version)
-                    events.append(event)
-            except EOFError:
-                pass
-            
-                # Compute and display statistics
-                global_stats, thread_stats = compute_stats(events, filt)
-                
-                # Export to files if requested
-                if args.export_csv:
-                    export_csv(global_stats, thread_stats, args.export_csv)
-                if args.export_json:
-                    export_json(global_stats, thread_stats, args.export_json)
-                
-                # Display table unless only exporting
-                if not args.export_csv and not args.export_json:
-                    print_stats_table(global_stats, thread_stats, args.sort_by)
-    else:
-        # Normal trace display mode
-        process_trace(args.file, filt, args.color, not args.no_timing, args.timestamp)
-
-
-if __name__ == '__main__':
-    if len(sys.argv) == 1:
-        print('usage: trc_pretty.py trace.bin [OPTIONS]', file=sys.stderr)
-        print('       trc_pretty.py --help  for detailed usage', file=sys.stderr)
-        sys.exit(2)
-    main()

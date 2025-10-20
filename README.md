@@ -543,19 +543,19 @@ The Python post-processing tool provides more detailed analysis:
 
 ```bash
 # Display performance statistics
-python tools/trc_pretty.py trace.bin --stats
+python tools/trc_analyze.py stats trace.bin
 
 # Sort by different metrics
-python tools/trc_pretty.py trace.bin --stats --sort-by calls     # by call count
-python tools/trc_pretty.py trace.bin --stats --sort-by avg       # by average time
-python tools/trc_pretty.py trace.bin --stats --sort-by name      # alphabetically
+python tools/trc_analyze.py stats trace.bin --sort-by calls     # by call count
+python tools/trc_analyze.py stats trace.bin --sort-by avg       # by average time
+python tools/trc_analyze.py stats trace.bin --sort-by name      # alphabetically
 
 # Filter before computing stats
-python tools/trc_pretty.py trace.bin --stats --filter-function "worker*"
+python tools/trc_analyze.py stats trace.bin --filter-function "worker*"
 
 # Export to CSV or JSON
-python tools/trc_pretty.py trace.bin --stats --export-csv stats.csv
-python tools/trc_pretty.py trace.bin --stats --export-json stats.json
+python tools/trc_analyze.py stats trace.bin --export-csv stats.csv
+python tools/trc_analyze.py stats trace.bin --export-json stats.json
 ```
 
 ### Memory Tracking
@@ -726,7 +726,7 @@ trace::dump_binary("trace.bin");
 
 ### Python Post-Processing Tool
 
-The `tools/trc_pretty.py` tool provides powerful post-processing of binary trace dumps with full filtering and coloring support.
+The `tools/trc_analyze.py` tool provides powerful post-processing of binary trace dumps with multi-command interface for analysis, filtering, and visualization.
 
 **Features:**
 - ✅ Thread-aware ANSI color output (matches runtime colors)
@@ -739,28 +739,31 @@ The `tools/trc_pretty.py` tool provides powerful post-processing of binary trace
 **Basic Usage:**
 ```bash
 # Display trace
-python tools/trc_pretty.py trace.bin
+python tools/trc_analyze.py display trace.bin
 
 # With thread-aware colors
-python tools/trc_pretty.py trace.bin --color
+python tools/trc_analyze.py display trace.bin --color
 
 # Filter to specific functions
-python tools/trc_pretty.py trace.bin --filter-function "core_*"
+python tools/trc_analyze.py display trace.bin --filter-function "core_*"
 
 # Exclude test functions
-python tools/trc_pretty.py trace.bin --exclude-function "*_test" --exclude-function "debug_*"
+python tools/trc_analyze.py display trace.bin --exclude-function "*_test" --exclude-function "debug_*"
 
 # Limit depth
-python tools/trc_pretty.py trace.bin --max-depth 10
+python tools/trc_analyze.py display trace.bin --max-depth 10
 
 # Filter by thread ID
-python tools/trc_pretty.py trace.bin --filter-thread 0x1234
+python tools/trc_analyze.py display trace.bin --filter-thread 0x1234
 
 # Complex filtering with colors
-python tools/trc_pretty.py trace.bin --color --max-depth 8 \
+python tools/trc_analyze.py display trace.bin --color --max-depth 8 \
     --filter-function "my_namespace::*" \
     --exclude-function "debug_*" \
     --exclude-file "*/test/*"
+
+# Show performance statistics
+python tools/trc_analyze.py stats trace.bin
 ```
 
 **Command-Line Options:**
@@ -922,9 +925,10 @@ See `tests/` directory:
 
 See `tools/` directory:
 
-**`trc_pretty.py`** - Binary trace file pretty-printer
-- Parses and displays TRCLOG10 binary dumps
-- Usage: `python tools/trc_pretty.py trace.bin`
+**`trc_analyze.py`** - Trace analysis tool with multiple commands
+- Multi-command interface for display, stats, callgraph, compare, diff, query
+- Usage: `python tools/trc_analyze.py <command> trace.bin`
+- Commands: `display`, `stats` (more coming soon)
 - See "Binary Dump Format" section for details
 
 **`trace_instrument.py`** - Automatic code instrumentation
@@ -936,7 +940,7 @@ See `tools/` directory:
 
 **Python Tool Tests:**
 - `test_trace_instrument.py` - Unit tests for instrumentation tool (11 tests)
-- `test_trc_pretty.py` - Unit tests for binary parser (10 tests)
+- `test_trc_analyze.py` - Unit tests for binary parser and filtering (10 tests)
 - Both require Python 3.6+
 - Run tests to verify tools work correctly on your system
 
@@ -964,7 +968,7 @@ cmake --build .
 - Linux/Mac: GCC 7+, Clang 5+
 
 **Python Tools** (optional):
-- Python 3.6+ (for trc_pretty.py, trace_instrument.py)
+- Python 3.6+ (for trc_analyze.py, trace_instrument.py)
 - No external dependencies (uses only standard library)
 
 ## License
@@ -1175,8 +1179,8 @@ trace::config.track_memory = true;      // Optional RSS tracking
 trace::internal::ensure_stats_registered();  // Register handler
 
 // Python tool
-python tools/trc_pretty.py trace.bin --stats --sort-by total
-python tools/trc_pretty.py trace.bin --stats --export-csv stats.csv
+python tools/trc_analyze.py stats trace.bin --sort-by total
+python tools/trc_analyze.py stats trace.bin --export-csv stats.csv
 ```
 
 ### Near-Term Features

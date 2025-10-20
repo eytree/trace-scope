@@ -46,3 +46,10 @@ tools/__pycache__/
 
 # Build directories
 build_ninja_clang/
+
+# Statistical post-processing artifacts
+.trace_history.db
+*.dot
+*_callgraph.*
+*.csv
+*.json

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Test trc_pretty.py with version 2 binary format and filtering."""
+"""Test trc_analyze.py and trc_common.py - Wildcard matching and filtering."""
 
 import sys
 import os
 
-# Add tools directory to path to import trc_pretty
+# Add tools directory to path
 sys.path.insert(0, os.path.dirname(__file__))
 
-from trc_pretty import wildcard_match, matches_any, EventFilter
+from trc_common import wildcard_match, matches_any, EventFilter
 
 
 def test_wildcard():
