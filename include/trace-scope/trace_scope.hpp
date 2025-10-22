@@ -2312,6 +2312,35 @@ inline void trace_msgf(const char* file, int line, const char* fmt, ...) {
 }
 
 /**
+ * @brief Internal function for TRACE_ARG macro - with value.
+ * 
+ * Logs a function argument with its name, type, and value.
+ * The value is formatted using operator<<.
+ */
+template<typename T>
+inline void trace_arg(const char* file, int line, const char* name, const char* type_name, const T& value) {
+#if TRACE_ENABLED
+    std::ostringstream oss;
+    oss << name << ": " << type_name << " = " << value;
+    trace_msgf(file, line, "%s", oss.str().c_str());
+#endif
+}
+
+/**
+ * @brief Internal function for TRACE_ARG macro - without value (type only).
+ * 
+ * Logs a function argument with its name and type, but no value.
+ * Used for non-printable types like custom classes.
+ */
+inline void trace_arg(const char* file, int line, const char* name, const char* type_name) {
+#if TRACE_ENABLED
+    std::ostringstream oss;
+    oss << name << ": " << type_name;
+    trace_msgf(file, line, "%s", oss.str().c_str());
+#endif
+}
+
+/**
  * @brief Stream-based logging helper for C++ iostream-style output.
  * 
  * RAII helper that collects stream output via operator<< and writes
@@ -2677,3 +2706,75 @@ inline void ensure_stats_registered() {
  * @endcode
  */
 #define TRACE_LOG ::trace::TraceStream(__FILE__, __LINE__)
+
+/**
+ * @brief Helper function to format containers for TRACE_ARG.
+ * 
+ * Formats container contents as a single-line string with up to max_elem elements,
+ * followed by "..." if more elements exist. Output format: [elem1, elem2, elem3, ...]
+ * 
+ * @tparam Container Any container type with begin()/end() iterators
+ * @param c The container to format
+ * @param max_elem Maximum number of elements to show (default: 5)
+ * @return Formatted string representation of the container
+ */
+template<typename Container>
+inline std::string format_container(const Container& c, size_t max_elem = 5) {
+    std::ostringstream oss;
+    oss << "[";
+    size_t count = 0;
+    for (const auto& item : c) {
+        if (count > 0) oss << ", ";
+        if (count >= max_elem) {
+            oss << "...";
+            break;
+        }
+        oss << item;
+        count++;
+    }
+    oss << "]";
+    return oss.str();
+}
+
+/**
+ * @def TRACE_CONTAINER(container, max_elements)
+ * @brief Helper macro to format containers for TRACE_ARG.
+ * 
+ * Shows up to max_elements from the container, then "..." if more exist.
+ * Single-line output: [elem1, elem2, elem3, ...]
+ * 
+ * Example:
+ * @code
+ * std::vector<int> values = {1, 2, 3, 4, 5, 6, 7};
+ * TRACE_ARG("values", std::vector<int>, TRACE_CONTAINER(values, 5));
+ * // Output: values: std::vector<int> = [1, 2, 3, 4, 5, ...]
+ * @endcode
+ * 
+ * @param container The container to format
+ * @param max_elements Maximum number of elements to display
+ */
+#define TRACE_CONTAINER(container, max_elements) ::trace::format_container(container, max_elements)
+
+/**
+ * @def TRACE_ARG(name, type, ...)
+ * @brief Log a function argument with its name, type, and optionally its value.
+ * 
+ * Used to automatically log function parameters. Can be used with or without
+ * the value parameter. For printable types, include the value. For complex
+ * types, omit the value.
+ * 
+ * Example:
+ * @code
+ * void process(int id, const std::vector<int>& values, MyClass& obj) {
+ *     TRACE_SCOPE();
+ *     TRACE_ARG("id", int, id);  // Printable type with value
+ *     TRACE_ARG("values", std::vector<int>, TRACE_CONTAINER(values, 5));  // Container
+ *     TRACE_ARG("obj", MyClass);  // Non-printable type, no value
+ * }
+ * @endcode
+ * 
+ * @param name String literal with the parameter name
+ * @param type Type of the parameter
+ * @param ... Optional value or formatted value (for printable types)
+ */
+#define TRACE_ARG(...) ::trace::trace_arg(__FILE__, __LINE__, __VA_ARGS__)
