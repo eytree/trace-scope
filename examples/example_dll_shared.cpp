@@ -11,6 +11,12 @@
  * - Need unified trace output from all DLLs
  * 
  * New simple approach: Just use TRACE_SETUP_DLL_SHARED() macro!
+ * 
+ * What's shared:
+ * - Config: All DLLs use same configuration
+ * - Registry: All DLLs register to same central registry
+ * - Ring buffers: Each thread's Ring is shared across all DLLs (v0.9.0+)
+ * - Result: Unified trace output with all events, regardless of which DLL generated them
  */
 
 #include <trace-scope/trace_scope.hpp>
