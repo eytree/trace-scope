@@ -1053,10 +1053,15 @@ struct Ring {
  * 
  * Tracks all active ring buffers for flush_all() operations.
  * Thread-safe access via mutex.
+ * 
+ * In DLL shared mode (when g_external_registry is set), the Registry also
+ * manages heap-allocated Ring instances via thread_rings map to enable
+ * proper sharing across DLL boundaries.
  */
 struct Registry {
-    std::mutex mtx;                 ///< Protects rings vector
+    std::mutex mtx;                 ///< Protects rings vector and thread_rings map
     std::vector<Ring*> rings;       ///< Pointers to all registered ring buffers
+    std::map<std::thread::id, Ring*> thread_rings;  ///< Thread ID to Ring mapping for DLL sharing
 
     /**
      * @brief Register a new ring buffer.
@@ -1075,6 +1080,58 @@ struct Registry {
         std::lock_guard<std::mutex> lock(mtx);
         rings.erase(std::remove(rings.begin(), rings.end(), r), rings.end());
     }
+    
+    /**
+     * @brief Get or create Ring for current thread (DLL shared mode).
+     * 
+     * In DLL shared mode, Rings are heap-allocated and managed by the Registry
+     * to ensure all DLLs access the same Ring per thread.
+     * 
+     * @return Pointer to Ring for current thread (never null)
+     */
+    inline Ring* get_or_create_thread_ring() {
+        std::thread::id tid = std::this_thread::get_id();
+        
+        std::lock_guard<std::mutex> lock(mtx);
+        
+        // Check if Ring already exists for this thread
+        auto it = thread_rings.find(tid);
+        if (it != thread_rings.end()) {
+            return it->second;
+        }
+        
+        // Create new Ring on heap
+        Ring* ring = new Ring();
+        thread_rings[tid] = ring;
+        rings.push_back(ring);  // Also add to flush list
+        ring->registered = true;
+        
+        return ring;
+    }
+    
+    /**
+     * @brief Remove Ring for specific thread (DLL shared mode cleanup).
+     * 
+     * Called when a thread exits in DLL shared mode. Removes the Ring from
+     * both the thread_rings map and the rings vector, then deletes it.
+     * 
+     * @param tid Thread ID to remove
+     */
+    inline void remove_thread_ring(std::thread::id tid) {
+        std::lock_guard<std::mutex> lock(mtx);
+        
+        auto it = thread_rings.find(tid);
+        if (it != thread_rings.end()) {
+            Ring* ring = it->second;
+            
+            // Remove from both collections
+            rings.erase(std::remove(rings.begin(), rings.end(), ring), rings.end());
+            thread_rings.erase(it);
+            
+            // Delete the heap-allocated Ring
+            delete ring;
+        }
+    }
 };
 
 /**
@@ -1088,6 +1145,12 @@ struct Registry {
  * This is the recommended approach for DLL scenarios when you cannot
  * control which files are compiled (purely header-only solution).
  * 
+ * When external state is set, the library automatically switches to
+ * centralized Ring buffer management:
+ * - Each thread's Ring is heap-allocated in the shared Registry
+ * - All DLLs access the same Ring per thread (proper event sharing)
+ * - Automatic cleanup when threads exit via ThreadRingGuard
+ * 
  * @param cfg Pointer to shared Config instance (must outlive all tracing)
  * @param reg Pointer to shared Registry instance (must outlive all tracing)
  * 
@@ -1099,7 +1162,7 @@ struct Registry {
  * 
  * int main() {
  *     trace::set_external_state(&g_trace_config, &g_trace_registry);
- *     // Now all DLLs share the same state
+ *     // Now all DLLs share the same Config, Registry, and Ring buffers
  * }
  * @endcode
  */
@@ -1118,6 +1181,12 @@ inline void set_external_state(Config* cfg, Registry* reg) {
  * This macro simplifies DLL state sharing from 20+ lines of boilerplate to
  * a single line. The RAII guard ensures automatic cleanup even if exceptions occur.
  * 
+ * What gets shared across DLL boundaries:
+ * - Config: All DLLs use the same configuration settings
+ * - Registry: All DLLs register to the same central registry
+ * - Ring buffers: Each thread's Ring is heap-allocated and shared across all DLLs
+ * - Events: All trace events appear in unified output, regardless of which DLL generated them
+ * 
  * Usage: Add this macro at the start of main() in your main executable.
  * 
  * Example:
@@ -1132,7 +1201,7 @@ inline void set_external_state(Config* cfg, Registry* reg) {
  *     
  *     // Use tracing normally across all DLLs
  *     TRACE_SCOPE();
- *     call_dll_functions();  // All DLLs share same trace state
+ *     call_dll_functions();  // All DLLs share same trace state and Ring buffers
  *     
  *     return 0;  // Automatic flush on exit via RAII
  * }
@@ -1143,6 +1212,7 @@ inline void set_external_state(Config* cfg, Registry* reg) {
  * - Automatic cleanup (no manual flush needed)
  * - Exception-safe (RAII guarantees cleanup)
  * - Less error-prone
+ * - Proper Ring buffer sharing (fixed in v0.9.0-alpha)
  * 
  * Note: For advanced control, you can still use set_external_state() manually.
  */
@@ -1545,9 +1615,15 @@ inline AsyncQueue& async_queue() {
  * @brief Ring destructor implementation.
  * 
  * Defined here after registry() is available.
+ * 
+ * In DLL shared mode, Rings are heap-allocated and managed by Registry,
+ * so we skip the unregistration here to avoid double-free. The Registry's
+ * remove_thread_ring() handles cleanup in that case.
  */
 inline Ring::~Ring() {
-    if (registered) {
+    // In centralized DLL mode, Registry manages cleanup via remove_thread_ring()
+    // Don't unregister here as it would cause double-removal
+    if (registered && !g_external_registry) {
         registry().remove(this);
         registered = false;
     }
@@ -1581,20 +1657,51 @@ inline Ring::Ring() {
 }
 
 /**
+ * @brief RAII guard for cleaning up thread-local Ring in DLL shared mode.
+ * 
+ * When a thread exits in DLL shared mode, this destructor removes the Ring
+ * from the centralized registry and deletes it. Only used in DLL mode.
+ */
+struct ThreadRingGuard {
+    ~ThreadRingGuard() {
+        if (g_external_registry) {
+            // In DLL mode, remove this thread's Ring from registry
+            g_external_registry->remove_thread_ring(std::this_thread::get_id());
+        }
+    }
+};
+
+/**
  * @brief Get the current thread's ring buffer.
  * 
- * Each thread gets its own ring buffer (thread_local storage). On first call,
- * initializes the ring and registers it with the global registry.
+ * In DLL shared mode (when g_external_registry is set), uses centralized
+ * heap-allocated Ring storage to ensure all DLLs access the same Ring per thread.
+ * 
+ * In header-only mode, uses thread_local storage (each DLL gets its own copy).
  * 
  * @return Reference to the current thread's Ring
  */
 inline Ring& thread_ring() {
+    // DLL shared mode: use centralized Ring storage
+    if (g_external_registry) {
+        // Cache the pointer in thread_local storage to reduce overhead
+        static thread_local Ring* cached_ring = nullptr;
+        if (!cached_ring) {
+            // Install cleanup guard (once per thread)
+            static thread_local ThreadRingGuard cleanup_guard;
+            cached_ring = g_external_registry->get_or_create_thread_ring();
+        }
+        return *cached_ring;
+    }
+    
+    // Header-only mode: use thread_local storage (existing behavior)
     static thread_local Ring ring;
     static thread_local bool inited = false;
     if (!inited) {
         ring.tid = thread_id_hash();
-        ring.registered = true;
+        ring.color_offset = static_cast<uint8_t>(ring.tid % 8);
         registry().add(&ring);
+        ring.registered = true;
         inited = true;
     }
     return ring;
