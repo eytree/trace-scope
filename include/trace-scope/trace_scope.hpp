@@ -8,7 +8,7 @@
  *  - TRACE_MSG(fmt, ...): buffered message event at current depth (file:line).
  *  - Per-thread lock-free ring buffer; global flush to text.
  *  - dump_binary(path): compact binary dump + tools/trc_pretty.py pretty printer.
- *  - Optional DLL-safe mode via TRACE_SCOPE_IMPLEMENTATION.
+ *  - DLL-safe mode via TRACE_SETUP_DLL_SHARED() macro (shares state across DLLs).
  *
  * Build-time defines:
  *   TRACE_ENABLED   (default 1)
@@ -20,14 +20,30 @@
  *   By default, this is a header-only library. Each DLL/executable gets its own
  *   copy of the trace state, which may not be desired.
  *
- *   To share trace state across DLL boundaries:
- *   1. In ONE .cpp file in your main executable or shared DLL, define:
+ *   RECOMMENDED: Simple one-line setup with TRACE_SETUP_DLL_SHARED() macro:
+ *
+ *   In your main() function:
+ *   @code
+ *   #include <trace-scope/trace_scope.hpp>
+ *   
+ *   int main() {
+ *       TRACE_SETUP_DLL_SHARED();  // One line - automatic setup & cleanup!
+ *       trace::get_config().out = std::fopen("trace.log", "w");
+ *       // ... your code, including DLL calls
+ *       return 0;  // Automatic cleanup via RAII
+ *   }
+ *   @endcode
+ *
+ *   This automatically shares Config, Registry, and Ring buffers across all DLLs.
+ *   No need for TRACE_SCOPE_IMPLEMENTATION or special build flags.
+ *
+ *   ALTERNATIVE (Advanced): Manual control with TRACE_SCOPE_IMPLEMENTATION:
+ *   1. In ONE .cpp file in your main executable, define:
  *      #define TRACE_SCOPE_IMPLEMENTATION
  *      #include <trace_scope.hpp>
  *   2. In all other files, just #include <trace_scope.hpp> normally.
  *   3. Define TRACE_SCOPE_SHARED when building DLLs that need to share state.
- *
- *   This creates exported symbols that can be shared across DLL boundaries.
+ *   This approach gives more control but requires more setup.
  */
 
 #include <cstdint>
@@ -111,9 +127,9 @@
 #endif
 
 // Version information - keep in sync with VERSION file at project root
-#define TRACE_SCOPE_VERSION "0.9.0-alpha"
+#define TRACE_SCOPE_VERSION "0.10.0-alpha"
 #define TRACE_SCOPE_VERSION_MAJOR 0
-#define TRACE_SCOPE_VERSION_MINOR 9
+#define TRACE_SCOPE_VERSION_MINOR 10
 #define TRACE_SCOPE_VERSION_PATCH 0
 
 namespace trace {
