@@ -1594,14 +1594,41 @@ trace::flush_immediate_queue();  // Force flush if needed
 
 ### Near-Term Features
 
+**Code Quality & Analysis Tools**
+- CMake Presets for linting and memory checking configurations
+- clang-tidy integration for static analysis (modernize, bugprone, performance, readability)
+- AddressSanitizer (ASan) builds for memory error detection
+- Valgrind support via Linux/WSL builds
+- Automated check scripts (run_checks.bat, run_checks.sh)
+- Developer documentation (README_DEVELOPMENT.md) with setup instructions
+
 ### Medium-Term Goals
 
-**VS Code Extension**
-- Syntax highlighting for trace macros
-- Quick actions: "Add TRACE_SCOPE to function"
-- View trace output in integrated terminal
-- Jump to function from trace output
-- Toggle tracing on/off per file
+**IDE Integration & Extensions**
+- **VS Code Extension**
+  - Syntax highlighting for trace macros
+  - Quick actions: "Add TRACE_SCOPE to function"
+  - View trace output in integrated terminal
+  - Jump to function from trace output
+  - Toggle tracing on/off per file
+  - Integration with CMake Presets for ASan/clang-tidy builds
+
+- **Visual Studio Extension**
+  - Trace macro IntelliSense support
+  - Diagnostics window integration
+  - Performance profiler integration
+  - Automatic TRACE_SCOPE insertion code snippets
+
+- **JetBrains Plugin (CLion/ReSharper C++)**
+  - Live template for TRACE_SCOPE
+  - Intention action: "Instrument function"
+  - Tool window for trace visualization
+  - Code inspections for missing instrumentation
+
+- **Sublime Text Plugin**
+  - Syntax highlighting and snippets
+  - Build system integration
+  - Output panel for trace viewing
 
 **Chrome Tracing Format Export**
 - Export to chrome://tracing JSON format
