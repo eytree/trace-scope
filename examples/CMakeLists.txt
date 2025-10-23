@@ -51,3 +51,6 @@ target_link_libraries(example_async_immediate PRIVATE trace_scope)
 add_executable(example_async_benchmark example_async_benchmark.cpp)
 target_link_libraries(example_async_benchmark PRIVATE trace_scope)
 
+# Real DLL example
+add_subdirectory(example_dll_real)
+

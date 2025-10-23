@@ -35,15 +35,7 @@
  *   @endcode
  *
  *   This automatically shares Config, Registry, and Ring buffers across all DLLs.
- *   No need for TRACE_SCOPE_IMPLEMENTATION or special build flags.
- *
- *   ALTERNATIVE (Advanced): Manual control with TRACE_SCOPE_IMPLEMENTATION:
- *   1. In ONE .cpp file in your main executable, define:
- *      #define TRACE_SCOPE_IMPLEMENTATION
- *      #include <trace_scope.hpp>
- *   2. In all other files, just #include <trace_scope.hpp> normally.
- *   3. Define TRACE_SCOPE_SHARED when building DLLs that need to share state.
- *   This approach gives more control but requires more setup.
+ *   No special build flags or compilation setup required.
  */
 
 #include <cstdint>
@@ -58,7 +50,6 @@
 #include <sstream>
 #include <map>
 #include <string>
-#include <vector>
 #include <atomic>
 #include <filesystem>
 
@@ -74,30 +65,19 @@
 #include <mach/task.h>
 #endif
 
-// DLL export/import macros for shared state across DLL boundaries
-#ifndef TRACE_SCOPE_API
-  #if defined(TRACE_SCOPE_SHARED)
-    #if defined(_WIN32) || defined(__CYGWIN__)
-      #if defined(TRACE_SCOPE_IMPLEMENTATION)
-        #define TRACE_SCOPE_API __declspec(dllexport)
-      #else
-        #define TRACE_SCOPE_API __declspec(dllimport)
-      #endif
-    #elif defined(__GNUC__) && __GNUC__ >= 4
-      #define TRACE_SCOPE_API __attribute__((visibility("default")))
-    #else
-      #define TRACE_SCOPE_API
-    #endif
-  #else
-    #define TRACE_SCOPE_API
-  #endif
+// Platform-specific includes for shared memory
+#ifdef _WIN32
+// Windows shared memory functions are in windows.h (already included)
+#elif defined(__linux__) || defined(__APPLE__)
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 #endif
 
-// Storage class for variables: inline for header-only, extern for DLL shared
-#if defined(TRACE_SCOPE_SHARED) && !defined(TRACE_SCOPE_IMPLEMENTATION)
-  #define TRACE_SCOPE_VAR extern TRACE_SCOPE_API
-#else
-  #define TRACE_SCOPE_VAR inline
+// DLL export/import macros for shared state across DLL boundaries
+#ifndef TRACE_SCOPE_API
+      #define TRACE_SCOPE_API
 #endif
 
 #ifndef TRACE_ENABLED
@@ -423,17 +403,203 @@ struct Config {
      */
     inline bool load_from_file(const char* path);
 };
-TRACE_SCOPE_VAR Config config;
+inline Config config;
 
 // Forward declarations for external state system
 struct Registry;
 inline Config& get_config();
 inline void flush_current_thread();
 
-// External state pointers for DLL-safe cross-boundary tracing (header-only solution)
-// When set, these override the default inline instances
-inline Config* g_external_config = nullptr;
-inline Registry* g_external_registry = nullptr;
+// Shared memory manager for cross-DLL state sharing
+namespace shared_memory {
+    // Platform-specific shared memory handle
+    struct SharedMemoryHandle {
+#ifdef _WIN32
+        void* handle;
+        void* mapped_view;
+#else
+        int fd;
+        void* mapped_addr;
+#endif
+        bool valid;
+    };
+    
+    // Create or open shared memory region
+    inline SharedMemoryHandle create_or_open_shared_memory(const char* name, size_t size, bool create) {
+        SharedMemoryHandle handle = {0};
+        
+#ifdef _WIN32
+        handle.handle = nullptr;
+        handle.mapped_view = nullptr;
+        handle.valid = false;
+        
+        if (create) {
+            handle.handle = CreateFileMappingA(
+                INVALID_HANDLE_VALUE,
+                nullptr,
+                PAGE_READWRITE,
+                0,
+                static_cast<DWORD>(size),
+                name
+            );
+        } else {
+            handle.handle = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, name);
+        }
+        
+        if (handle.handle) {
+            handle.mapped_view = MapViewOfFile(handle.handle, FILE_MAP_ALL_ACCESS, 0, 0, size);
+            handle.valid = (handle.mapped_view != nullptr);
+        }
+#else
+        handle.fd = -1;
+        handle.mapped_addr = nullptr;
+        handle.valid = false;
+        
+#ifdef __linux__ || defined(__APPLE__)
+        int flags = O_RDWR;
+        if (create) flags |= O_CREAT | O_EXCL;
+        
+        handle.fd = shm_open(name, flags, 0666);
+        
+        if (handle.fd >= 0) {
+            if (create) {
+                ftruncate(handle.fd, size);
+            }
+            handle.mapped_addr = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, handle.fd, 0);
+            handle.valid = (handle.mapped_addr != MAP_FAILED);
+        }
+#else
+        // POSIX shared memory not available on this platform
+        handle.valid = false;
+#endif
+#endif
+        
+        return handle;
+    }
+    
+    // Get the mapped address from a handle (platform-agnostic)
+    inline void* get_mapped_address(const SharedMemoryHandle& handle) {
+#ifdef _WIN32
+        return handle.mapped_view;
+#else
+        return handle.mapped_addr;
+#endif
+    }
+    
+    // Close shared memory
+    inline void close_shared_memory(SharedMemoryHandle& handle) {
+        if (!handle.valid) return;
+        
+#ifdef _WIN32
+        if (handle.mapped_view) {
+            UnmapViewOfFile(handle.mapped_view);
+            handle.mapped_view = nullptr;
+        }
+        if (handle.handle) {
+            CloseHandle(handle.handle);
+            handle.handle = nullptr;
+        }
+#else
+#ifdef __linux__ || defined(__APPLE__)
+        if (handle.mapped_addr && handle.mapped_addr != MAP_FAILED) {
+            munmap(handle.mapped_addr, sizeof(SharedTraceState));
+            handle.mapped_addr = nullptr;
+        }
+        if (handle.fd >= 0) {
+            close(handle.fd);
+            handle.fd = -1;
+        }
+#endif
+#endif
+        handle.valid = false;
+    }
+    
+    // Get unique shared memory name for this process
+    inline std::string get_shared_memory_name() {
+#ifdef _WIN32
+        DWORD pid = GetCurrentProcessId();
+        char name[128];
+        std::snprintf(name, sizeof(name), "Local\\trace_scope_%lu", pid);
+        return name;
+#elif defined(__linux__) || defined(__APPLE__)
+        pid_t pid = getpid();
+        char name[128];
+        std::snprintf(name, sizeof(name), "/trace_scope_%d", pid);
+        return name;
+#else
+        // Fallback for unsupported platforms
+        return "/trace_scope_fallback";
+#endif
+    }
+}
+
+// DLL-safe shared state management via shared memory
+namespace dll_shared_state {
+    // Shared state structure
+    struct SharedTraceState {
+        uint32_t magic;
+        uint32_t version;
+        Config* config_ptr;
+        Registry* registry_ptr;
+        char process_name[64];
+    };
+    
+    // Get or create shared state (thread-safe)
+    inline SharedTraceState* get_shared_state() {
+        static std::mutex init_mutex;
+        static SharedTraceState* state = nullptr;
+        static shared_memory::SharedMemoryHandle shm_handle;
+        
+        if (state) return state;
+        
+        std::lock_guard<std::mutex> lock(init_mutex);
+        if (state) return state;  // Double-check
+        
+        // Try to open existing shared memory first (DLL case)
+        std::string shm_name = shared_memory::get_shared_memory_name();
+        shm_handle = shared_memory::create_or_open_shared_memory(
+            shm_name.c_str(),
+            sizeof(SharedTraceState),
+            false  // Try open first
+        );
+        
+        if (!shm_handle.valid) {
+            // Doesn't exist, we might be the first/main EXE
+            // This is OK - will be created by TRACE_SETUP_DLL_SHARED()
+            return nullptr;
+        }
+        
+        // Access shared memory
+        state = static_cast<SharedTraceState*>(shared_memory::get_mapped_address(shm_handle));
+        
+        // Validate magic number
+        if (state->magic != 0x54524143) {  // "TRAC"
+            state = nullptr;  // Invalid shared memory
+        }
+        
+        return state;
+    }
+    
+    inline Config* get_shared_config() {
+        SharedTraceState* state = get_shared_state();
+        return state ? state->config_ptr : nullptr;
+    }
+    
+    inline Registry* get_shared_registry() {
+        SharedTraceState* state = get_shared_state();
+        return state ? state->registry_ptr : nullptr;
+    }
+    
+    inline void set_shared_config(Config* cfg) {
+        SharedTraceState* state = get_shared_state();
+        if (state) state->config_ptr = cfg;
+    }
+    
+    inline void set_shared_registry(Registry* reg) {
+        SharedTraceState* state = get_shared_state();
+        if (state) state->registry_ptr = reg;
+    }
+}
 
 /** @brief Type of trace event */
 enum class EventType : uint8_t { 
@@ -1070,7 +1236,7 @@ struct Ring {
  * Tracks all active ring buffers for flush_all() operations.
  * Thread-safe access via mutex.
  * 
- * In DLL shared mode (when g_external_registry is set), the Registry also
+ * In DLL shared mode (when external registry is set), the Registry also
  * manages heap-allocated Ring instances via thread_rings map to enable
  * proper sharing across DLL boundaries.
  */
@@ -1183,8 +1349,8 @@ struct Registry {
  * @endcode
  */
 inline void set_external_state(Config* cfg, Registry* reg) {
-    g_external_config = cfg;
-    g_external_registry = reg;
+    dll_shared_state::set_shared_config(cfg);
+    dll_shared_state::set_shared_registry(reg);
 }
 
 /**
@@ -1235,8 +1401,29 @@ inline void set_external_state(Config* cfg, Registry* reg) {
 #define TRACE_SETUP_DLL_SHARED_WITH_CONFIG(config_file) \
     static trace::Config g_trace_shared_config; \
     static trace::Registry g_trace_shared_registry; \
+    static trace::shared_memory::SharedMemoryHandle g_shm_handle; \
+    static trace::dll_shared_state::SharedTraceState* g_shared_state = nullptr; \
     static struct TraceDllGuard { \
         TraceDllGuard() { \
+            /* Create shared memory */ \
+            std::string shm_name = trace::shared_memory::get_shared_memory_name(); \
+            g_shm_handle = trace::shared_memory::create_or_open_shared_memory( \
+                shm_name.c_str(), \
+                sizeof(trace::dll_shared_state::SharedTraceState), \
+                true /* create */ \
+            ); \
+            \
+            if (g_shm_handle.valid) { \
+                /* Initialize shared state */ \
+                g_shared_state = static_cast<trace::dll_shared_state::SharedTraceState*>( \
+                    trace::shared_memory::get_mapped_address(g_shm_handle)); \
+                g_shared_state->magic = 0x54524143; \
+                g_shared_state->version = 1; \
+                g_shared_state->config_ptr = &g_trace_shared_config; \
+                g_shared_state->registry_ptr = &g_trace_shared_registry; \
+                std::strncpy(g_shared_state->process_name, "trace-scope", 63); \
+            } \
+            \
             trace::set_external_state(&g_trace_shared_config, &g_trace_shared_registry); \
             const char* cfg_path = (config_file); \
             if (cfg_path && cfg_path[0]) { \
@@ -1245,6 +1432,9 @@ inline void set_external_state(Config* cfg, Registry* reg) {
         } \
         ~TraceDllGuard() { \
             trace::flush_all(); \
+            if (g_shm_handle.valid) { \
+                trace::shared_memory::close_shared_memory(g_shm_handle); \
+            } \
         } \
     } g_trace_dll_guard
 
@@ -1265,7 +1455,7 @@ inline void set_external_state(Config* cfg, Registry* reg) {
  * @return Reference to the active Config
  */
 inline Config& get_config() {
-    return g_external_config ? *g_external_config : config;
+    return dll_shared_state::get_shared_config() ? *dll_shared_state::get_shared_config() : config;
 }
 
 /**
@@ -1579,28 +1769,8 @@ inline void filter_clear() {
     f.max_depth = -1;
 }
 
-#if defined(TRACE_SCOPE_SHARED)
-// For DLL sharing: use extern/exported variable
-TRACE_SCOPE_API Registry& registry();
-#if defined(TRACE_SCOPE_IMPLEMENTATION)
 /**
- * @brief Get the global registry instance (DLL-shared version).
- * 
- * Checks for external registry first (set via set_external_state()),
- * otherwise returns the static instance.
- * 
- * @return Reference to the active Registry
- */
-Registry& registry() {
-    if (g_external_registry) return *g_external_registry;
-    static Registry r;
-    return r;
-}
-#endif
-#else
-// For header-only: inline function with static local
-/**
- * @brief Get the global registry instance (header-only version).
+ * @brief Get the global registry instance.
  * 
  * Checks for external registry first (set via set_external_state()),
  * otherwise returns the static instance.
@@ -1608,11 +1778,10 @@ Registry& registry() {
  * @return Reference to the active Registry
  */
 inline Registry& registry() {
-    if (g_external_registry) return *g_external_registry;
+    if (dll_shared_state::get_shared_registry()) return *dll_shared_state::get_shared_registry();
     static Registry r;
     return r;
 }
-#endif
 
 /**
  * @brief Get the global async queue for immediate mode.
@@ -1639,7 +1808,7 @@ inline AsyncQueue& async_queue() {
 inline Ring::~Ring() {
     // In centralized DLL mode, Registry manages cleanup via remove_thread_ring()
     // Don't unregister here as it would cause double-removal
-    if (registered && !g_external_registry) {
+    if (registered && !dll_shared_state::get_shared_registry()) {
         registry().remove(this);
         registered = false;
     }
@@ -1680,9 +1849,9 @@ inline Ring::Ring() {
  */
 struct ThreadRingGuard {
     ~ThreadRingGuard() {
-        if (g_external_registry) {
+        if (dll_shared_state::get_shared_registry()) {
             // In DLL mode, remove this thread's Ring from registry
-            g_external_registry->remove_thread_ring(std::this_thread::get_id());
+            dll_shared_state::get_shared_registry()->remove_thread_ring(std::this_thread::get_id());
         }
     }
 };
@@ -1690,7 +1859,7 @@ struct ThreadRingGuard {
 /**
  * @brief Get the current thread's ring buffer.
  * 
- * In DLL shared mode (when g_external_registry is set), uses centralized
+ * In DLL shared mode (when external registry is set), uses centralized
  * heap-allocated Ring storage to ensure all DLLs access the same Ring per thread.
  * 
  * In header-only mode, uses thread_local storage (each DLL gets its own copy).
@@ -1699,13 +1868,13 @@ struct ThreadRingGuard {
  */
 inline Ring& thread_ring() {
     // DLL shared mode: use centralized Ring storage
-    if (g_external_registry) {
+    if (dll_shared_state::get_shared_registry()) {
         // Cache the pointer in thread_local storage to reduce overhead
         static thread_local Ring* cached_ring = nullptr;
         if (!cached_ring) {
             // Install cleanup guard (once per thread)
             static thread_local ThreadRingGuard cleanup_guard;
-            cached_ring = g_external_registry->get_or_create_thread_ring();
+            cached_ring = dll_shared_state::get_shared_registry()->get_or_create_thread_ring();
         }
         return *cached_ring;
     }
