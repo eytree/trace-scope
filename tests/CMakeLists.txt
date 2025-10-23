@@ -28,3 +28,6 @@ target_link_libraries(test_filtering PRIVATE trace_scope)
 add_executable(test_async_immediate test_async_immediate.cpp)
 target_link_libraries(test_async_immediate PRIVATE trace_scope)
 
+# DLL test infrastructure
+add_subdirectory(test_dll)
+
