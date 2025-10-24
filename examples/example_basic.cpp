@@ -50,7 +50,7 @@ int main() {
     TRC_SCOPE();
     
     // Configure output to file instead of stdout
-    trace::config.out = std::fopen("trace.log", "w");
+    trace::config.out = trace::safe_fopen("trace.log", "w");
 
     // Create worker thread
     std::thread t1([]() {

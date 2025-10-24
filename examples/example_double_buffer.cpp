@@ -89,7 +89,7 @@ void run_stress_test(bool use_double_buffer, const char* output_file) {
     
     // Configure tracing
     trace::config.use_double_buffering = use_double_buffer;
-    trace::config.out = std::fopen(output_file, "w");
+    trace::config.out = trace::safe_fopen(output_file, "w");
     trace::config.print_timestamp = false;  // Reduce output size for high-frequency
     
     std::printf("\n=== Stress Test: %s ===\n", 

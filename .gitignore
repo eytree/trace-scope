@@ -57,3 +57,8 @@ build_ninja_clang/
 stats.json
 diff_report.json
 callgraph.json
+
+# Linting artifacts
+lint_output.txt
+*.clang-tidy
+compile_commands.json

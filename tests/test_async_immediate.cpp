@@ -13,7 +13,7 @@
 
 TEST(basic_async_immediate) {
     // Test basic async immediate mode - events should appear in output
-    trace::config.out = std::fopen("test_async_basic.log", "w");
+    trace::config.out = trace::safe_fopen("test_async_basic.log", "w");
     trace::config.mode = trace::TracingMode::Immediate;
     
     {
@@ -43,7 +43,7 @@ TEST(basic_async_immediate) {
 
 TEST(multi_threaded_async_immediate) {
     // Test that async immediate mode works correctly with multiple threads
-    trace::config.out = std::fopen("test_async_multithread.log", "w");
+    trace::config.out = trace::safe_fopen("test_async_multithread.log", "w");
     trace::config.mode = trace::TracingMode::Immediate;
     
     const int num_threads = 4;
@@ -86,7 +86,7 @@ TEST(multi_threaded_async_immediate) {
 
 TEST(flush_immediate_queue_blocks) {
     // Test that flush_immediate_queue() actually blocks until queue is drained
-    trace::config.out = std::fopen("test_async_flush.log", "w");
+    trace::config.out = trace::safe_fopen("test_async_flush.log", "w");
     trace::config.mode = trace::TracingMode::Immediate;
     
     // Generate events
@@ -118,7 +118,7 @@ TEST(flush_immediate_queue_blocks) {
 TEST(async_queue_atexit_handler) {
     // Test that atexit handler properly flushes queue on shutdown
     // This is implicitly tested by other tests, but verify explicitly
-    trace::config.out = std::fopen("test_async_atexit.log", "w");
+    trace::config.out = trace::safe_fopen("test_async_atexit.log", "w");
     trace::config.mode = trace::TracingMode::Immediate;
     
     {
@@ -145,7 +145,7 @@ TEST(async_queue_atexit_handler) {
 
 TEST(configurable_flush_interval) {
     // Test different flush intervals
-    trace::config.out = std::fopen("test_async_interval.log", "w");
+    trace::config.out = trace::safe_fopen("test_async_interval.log", "w");
     trace::config.mode = trace::TracingMode::Immediate;
     trace::config.immediate_flush_interval_ms = 10;  // 10ms interval
     
@@ -176,8 +176,8 @@ TEST(configurable_flush_interval) {
 
 TEST(hybrid_mode_with_async) {
     // Test that hybrid mode uses async queue for immediate output
-    trace::config.out = std::fopen("test_async_hybrid_buffered.log", "w");
-    trace::config.immediate_out = std::fopen("test_async_hybrid_immediate.log", "w");
+    trace::config.out = trace::safe_fopen("test_async_hybrid_buffered.log", "w");
+    trace::config.immediate_out = trace::safe_fopen("test_async_hybrid_immediate.log", "w");
     trace::config.mode = trace::TracingMode::Hybrid;
     
     {

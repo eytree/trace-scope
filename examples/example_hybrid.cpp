@@ -63,7 +63,7 @@ int main() {
     trace::config.immediate_out = stdout;
     
     // Buffered output saved to file (complete history for post-processing)
-    trace::config.out = std::fopen("hybrid_buffered.log", "w");
+    trace::config.out = trace::safe_fopen("hybrid_buffered.log", "w");
     
     std::printf("Starting simulation with %d items across 3 threads...\n", 30);
     std::printf("Watch this output for real-time progress!\n\n");

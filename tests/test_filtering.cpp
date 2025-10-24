@@ -50,7 +50,7 @@ void recursive(int depth) {
 // Helper to count trace events
 int count_events_in_buffer() {
     // Flush to a temp file and count lines
-    FILE* tmp = std::tmpfile();
+    FILE* tmp = trace::safe_tmpfile();
     if (!tmp) return -1;
     
     FILE* old_out = trace::config.out;
@@ -281,7 +281,7 @@ TEST(filter_complex_combination) {
 
 TEST(filter_from_ini_file) {
     // Create a temporary INI file with filter config
-    FILE* f = std::fopen("test_filter_temp.ini", "w");
+    FILE* f = trace::safe_fopen("test_filter_temp.ini", "w");
     TEST_ASSERT(f != nullptr);
     
     std::fprintf(f, "[filter]\n");

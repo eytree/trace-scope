@@ -30,7 +30,7 @@ TEST(functional) {
     
     // Enable double-buffering
     trace::config.use_double_buffering = true;
-    trace::config.out = std::fopen("test_double_buffer_functional.log", "w");
+    trace::config.out = trace::safe_fopen("test_double_buffer_functional.log", "w");
     
     // Generate some events
     {
@@ -69,7 +69,7 @@ TEST(event_ordering) {
     std::printf("=== Test 2: Event Ordering Test ===\n");
     
     trace::config.use_double_buffering = true;
-    trace::config.out = std::fopen("test_double_buffer_ordering.log", "w");
+    trace::config.out = trace::safe_fopen("test_double_buffer_ordering.log", "w");
     
     // Generate sequential events
     for (int i = 0; i < 100; ++i) {
@@ -138,7 +138,7 @@ TEST(stress) {
         g_stress_events.store(0);
         
         trace::config.use_double_buffering = use_double;
-        trace::config.out = std::fopen(filename, "w");
+        trace::config.out = trace::safe_fopen(filename, "w");
         trace::config.print_timestamp = false;  // Reduce output size
         
         auto start = std::chrono::steady_clock::now();
@@ -192,7 +192,7 @@ TEST(single_thread_correctness) {
     std::printf("=== Test 4: Single-Thread Correctness ===\n");
     
     trace::config.use_double_buffering = true;
-    trace::config.out = std::fopen("test_double_buffer_correctness.log", "w");
+    trace::config.out = trace::safe_fopen("test_double_buffer_correctness.log", "w");
     
     const int NUM_EVENTS = 1000;
     const int FLUSH_INTERVAL = 50;
@@ -213,7 +213,7 @@ TEST(single_thread_correctness) {
     }
     
     // Verify the log file contains all events
-    FILE* f = std::fopen("test_double_buffer_correctness.log", "r");
+    FILE* f = trace::safe_fopen("test_double_buffer_correctness.log", "r");
     TEST_ASSERT(f != nullptr, "Failed to open correctness log");
     
     int event_count = 0;
@@ -244,7 +244,7 @@ TEST(buffer_swap) {
     std::printf("=== Test 5: Buffer Swap Verification ===\n");
     
     trace::config.use_double_buffering = true;
-    trace::config.out = std::fopen("test_double_buffer_swap.log", "w");
+    trace::config.out = trace::safe_fopen("test_double_buffer_swap.log", "w");
     
     // Write to buffer 0
     TRC_MSG("Before flush 1");
@@ -270,7 +270,7 @@ TEST(buffer_swap) {
     }
     
     // Verify the log contains all 3 messages
-    FILE* f = std::fopen("test_double_buffer_swap.log", "r");
+    FILE* f = trace::safe_fopen("test_double_buffer_swap.log", "r");
     TEST_ASSERT(f != nullptr, "Failed to open swap log");
     
     bool found[3] = {false, false, false};

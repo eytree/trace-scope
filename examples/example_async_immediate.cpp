@@ -43,7 +43,7 @@ int main() {
     std::printf("=================================================\n\n");
     
     // Configure for immediate mode
-    trace::config.out = std::fopen("async_immediate.log", "w");
+    trace::config.out = trace::safe_fopen("async_immediate.log", "w");
     trace::config.mode = trace::TracingMode::Immediate;
     trace::config.immediate_flush_interval_ms = 1;  // Flush every 1ms (default)
     

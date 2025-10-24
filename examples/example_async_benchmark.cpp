@@ -30,9 +30,9 @@ double measure_overhead(trace::TracingMode mode, int num_threads = 1) {
     if (mode == trace::TracingMode::Immediate) {
         // Restart async queue for immediate mode
         trace::stop_async_immediate();
-        trace::start_async_immediate(std::fopen("benchmark_immediate.log", "w"));
+        trace::start_async_immediate(trace::safe_fopen("benchmark_immediate.log", "w"));
     } else {
-        trace::config.out = std::fopen("benchmark_buffered.log", "w");
+        trace::config.out = trace::safe_fopen("benchmark_buffered.log", "w");
     }
     
     // Warmup

@@ -129,12 +129,38 @@
 #endif
 
 // Version information - keep in sync with VERSION file at project root
-#define TRC_SCOPE_VERSION "0.11.0-alpha"
+#define TRC_SCOPE_VERSION "0.14.0-alpha"
 #define TRC_SCOPE_VERSION_MAJOR 0
-#define TRC_SCOPE_VERSION_MINOR 11
+#define TRC_SCOPE_VERSION_MINOR 14
 #define TRC_SCOPE_VERSION_PATCH 0
 
 namespace trace {
+
+// Cross-platform safe fopen wrapper to avoid deprecation warnings
+inline FILE* safe_fopen(const char* filename, const char* mode) {
+#ifdef _MSC_VER
+    FILE* file = nullptr;
+    if (fopen_s(&file, filename, mode) != 0) {
+        return nullptr;
+    }
+    return file;
+#else
+    return std::fopen(filename, mode);
+#endif
+}
+
+// Cross-platform safe tmpfile wrapper to avoid deprecation warnings
+inline FILE* safe_tmpfile() {
+#ifdef _MSC_VER
+    FILE* file = nullptr;
+    if (tmpfile_s(&file) != 0) {
+        return nullptr;
+    }
+    return file;
+#else
+    return std::tmpfile();
+#endif
+}
 
 // Forward declarations
 struct Config;
@@ -1499,7 +1525,8 @@ inline void set_external_state(Config* cfg, Registry* reg) {
                 g_shared_state->version = 1; \
                 g_shared_state->config_ptr = &g_trace_shared_config; \
                 g_shared_state->registry_ptr = &g_trace_shared_registry; \
-                std::strncpy(g_shared_state->process_name, "trace-scope", 63); \
+                std::strncpy(g_shared_state->process_name, "trace-scope", 63);
+                g_shared_state->process_name[63] = '\0'; \
             } \
             \
             trace::set_external_state(&g_trace_shared_config, &g_trace_shared_registry); \
@@ -1542,7 +1569,7 @@ inline Config& get_config() {
  * Parses INI file and applies configuration settings.
  */
 inline bool Config::load_from_file(const char* path) {
-    FILE* f = std::fopen(path, "r");
+    FILE* f = safe_fopen(path, "r");
     if (!f) {
         std::fprintf(stderr, "trace-scope: Warning: Could not open config file: %s\n", path);
         return false;
@@ -1590,14 +1617,14 @@ inline bool Config::load_from_file(const char* path) {
         // Apply configuration based on section and key
         if (current_section == "output") {
             if (key == "file") {
-                FILE* new_out = std::fopen(ini_parser::unquote(value).c_str(), "w");
+                FILE* new_out = safe_fopen(ini_parser::unquote(value).c_str(), "w");
                 if (new_out) {
                     if (out && out != stdout) std::fclose(out);
                     out = new_out;
                 }
             }
             else if (key == "immediate_file") {
-                FILE* new_imm = std::fopen(ini_parser::unquote(value).c_str(), "w");
+                FILE* new_imm = safe_fopen(ini_parser::unquote(value).c_str(), "w");
                 if (new_imm) {
                     if (immediate_out && immediate_out != stdout) std::fclose(immediate_out);
                     immediate_out = new_imm;
@@ -2477,7 +2504,7 @@ inline std::string generate_dump_filename(const char* prefix = nullptr) {
  */
 inline std::string dump_binary(const char* prefix = nullptr) {
     std::string filename = generate_dump_filename(prefix);
-    FILE* f = std::fopen(filename.c_str(), "wb");
+    FILE* f = safe_fopen(filename.c_str(), "wb");
     if (!f) return "";
 
     auto w8  = [&](uint8_t v){ std::fwrite(&v,1,1,f); };

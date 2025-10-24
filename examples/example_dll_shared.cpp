@@ -32,7 +32,7 @@
 //     struct TraceInit {
 //         TraceInit() {
 //             trace::set_external_state(&g_trace_config, &g_trace_registry);
-//             g_trace_config.out = std::fopen("dll_shared.log", "w");
+//             g_trace_config.out = trace::safe_fopen("dll_shared.log", "w");
 //         }
 //         ~TraceInit() {
 //             trace::flush_all();
@@ -75,7 +75,7 @@ int main() {
     TRC_SETUP_DLL_SHARED();  // Automatic setup & cleanup via RAII
     
     // Configure trace output (use get_config() to access the shared config)
-    trace::get_config().out = std::fopen("dll_shared.log", "w");
+    trace::get_config().out = trace::safe_fopen("dll_shared.log", "w");
     trace::get_config().print_timestamp = false;
     trace::get_config().print_thread = true;
     

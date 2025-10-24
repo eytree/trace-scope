@@ -1325,6 +1325,40 @@ cmake --build .
 ./example_basic
 ```
 
+## Code Quality
+
+### Running clang-tidy Linting
+
+To check code quality with clang-tidy:
+
+```bash
+# Configure with linting enabled
+cmake --preset lint
+
+# Build (runs clang-tidy on all files)
+cmake --build --preset lint
+```
+
+Or use the convenience script:
+
+```bash
+# Linux/macOS
+./scripts/lint.sh
+
+# Windows
+scripts\lint.bat
+```
+
+### clang-tidy Configuration
+
+The project uses comprehensive clang-tidy checks defined in `.clang-tidy`.
+All warnings are treated as errors to maintain code quality.
+
+To disable linting for development builds, use regular presets:
+```bash
+cmake --preset windows-msvc-release
+```
+
 ## Requirements
 
 **C++ Library:**

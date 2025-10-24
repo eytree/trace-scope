@@ -4,6 +4,67 @@ This document tracks major features, design decisions, and implementation milest
 
 ---
 
+## October 24, 2025 - v0.14.0-alpha
+
+### Code Quality and Tooling
+**Version:** 0.14.0-alpha  
+**Enhancement:** Integrated clang-tidy into CMake build system with comprehensive code quality checks
+
+**Problem:**
+- No automated code quality checking
+- Deprecation warnings on Windows (fopen, strncpy, tmpfile)
+- Inconsistent code style across codebase
+- No modern C++ best practices enforcement
+- Manual code review required for quality assurance
+
+**Solution:** Implemented comprehensive clang-tidy integration:
+
+**Configuration:**
+- Created `.clang-tidy` with 100+ checks enabled
+- Disabled checks that conflict with header-only library design
+- Warnings-as-errors for strict quality enforcement
+- C++17 compatibility maintained
+
+**CMake Integration:**
+- Added `ENABLE_CLANG_TIDY` option to CMakeLists.txt
+- Created `lint` preset in CMakePresets.json
+- Automatic clang-tidy execution during build
+- Cross-platform support (Windows, Linux, macOS)
+
+**Code Fixes:**
+- Added `safe_fopen()` wrapper to replace deprecated `fopen()`
+- Added `safe_tmpfile()` wrapper to replace deprecated `tmpfile()`
+- Fixed `strncpy()` usage with proper null termination
+- Replaced all `std::fopen` calls with `trace::safe_fopen`
+- Replaced all `std::tmpfile` calls with `trace::safe_tmpfile`
+
+**Tooling:**
+- Created `scripts/lint.sh` (Linux/macOS) and `scripts/lint.bat` (Windows)
+- Updated README.md with Code Quality section
+- Added lint artifacts to .gitignore
+
+**Usage:**
+```bash
+# Run linting
+cmake --preset lint
+cmake --build --preset lint
+
+# Or use convenience scripts
+./scripts/lint.sh        # Linux/macOS
+scripts\lint.bat         # Windows
+```
+
+**Benefits:**
+- Automated code quality enforcement
+- Cross-platform safe file operations
+- Modern C++ best practices
+- IDE integration for real-time feedback
+- CI/CD ready linting workflow
+
+**Breaking Changes:** None - all changes are backward compatible
+
+---
+
 ## October 24, 2025 - v0.13.0-alpha
 
 ### CMakePresets Build System
