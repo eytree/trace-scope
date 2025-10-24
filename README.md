@@ -1327,27 +1327,39 @@ cmake --build .
 
 ## Code Quality
 
-### Running clang-tidy Linting
+### Quick Lint Check (Recommended)
 
-To check code quality with clang-tidy:
+For fast feedback, use the header-only check:
 
 ```bash
-# Configure with linting enabled
+# Check main header only (30 seconds)
+./scripts/run-clang-tidy.sh include/trace-scope/trace_scope.hpp
+
+# Check specific files
+./scripts/run-clang-tidy.sh tests/test_comprehensive.cpp
+```
+
+### Full Lint Check
+
+For comprehensive checking of all files:
+
+```bash
+# Fast preset (header + tests, ~2 minutes)
+cmake --preset lint-fast
+cmake --build --preset lint-fast -j4
+
+# Full preset (all files, ~5 minutes)
 cmake --preset lint
-
-# Build (runs clang-tidy on all files)
-cmake --build --preset lint
+cmake --build --preset lint -j4
 ```
 
-Or use the convenience script:
+### Troubleshooting
 
-```bash
-# Linux/macOS
-./scripts/lint.sh
-
-# Windows
-scripts\lint.bat
-```
+If the lint build hangs:
+1. Use `run-clang-tidy.sh` for individual files
+2. Try `lint-fast` preset first
+3. Check clang-tidy is installed: `clang-tidy --version`
+4. Increase timeout or reduce parallelization
 
 ### clang-tidy Configuration
 

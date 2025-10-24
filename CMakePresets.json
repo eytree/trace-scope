@@ -223,6 +223,18 @@
         "BUILD_TESTS": "ON"
       },
       "binaryDir": "${sourceDir}/build/lint"
+    },
+    {
+      "name": "lint-fast",
+      "displayName": "Fast Lint Check (Header Only)",
+      "description": "Quick linting of main header only",
+      "inherits": "windows-clang-release",
+      "cacheVariables": {
+        "ENABLE_CLANG_TIDY": "ON",
+        "BUILD_EXAMPLES": "OFF",
+        "BUILD_TESTS": "ON"
+      },
+      "binaryDir": "${sourceDir}/build/lint-fast"
     }
   ],
   "buildPresets": [
@@ -285,6 +297,11 @@
       "name": "lint",
       "displayName": "Lint with clang-tidy",
       "configurePreset": "lint"
+    },
+    {
+      "name": "lint-fast",
+      "displayName": "Fast Lint Check",
+      "configurePreset": "lint-fast"
     }
   ],
   "testPresets": [
@@ -358,6 +375,12 @@
       "name": "lint",
       "displayName": "Lint with clang-tidy",
       "configurePreset": "lint",
+      "output": {"outputOnFailure": true}
+    },
+    {
+      "name": "lint-fast",
+      "displayName": "Fast Lint Check",
+      "configurePreset": "lint-fast",
       "output": {"outputOnFailure": true}
     }
   ]

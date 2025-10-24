@@ -1525,7 +1525,7 @@ inline void set_external_state(Config* cfg, Registry* reg) {
                 g_shared_state->version = 1; \
                 g_shared_state->config_ptr = &g_trace_shared_config; \
                 g_shared_state->registry_ptr = &g_trace_shared_registry; \
-                std::strncpy(g_shared_state->process_name, "trace-scope", 63);
+                std::strncpy(g_shared_state->process_name, "trace-scope", 63); \
                 g_shared_state->process_name[63] = '\0'; \
             } \
             \
@@ -1541,7 +1541,7 @@ inline void set_external_state(Config* cfg, Registry* reg) {
                 trace::shared_memory::close_shared_memory(g_shm_handle); \
             } \
         } \
-    } g_trace_dll_guard
+    } g_trace_dll_guard;
 
 /**
  * @def TRC_SETUP_DLL_SHARED()
