@@ -612,19 +612,19 @@ The Python post-processing tool provides more detailed analysis:
 
 ```bash
 # Display performance statistics
-python tools/trc_analyze.py stats trace.trc
+python tools/trc.py stats trace.trc
 
 # Sort by different metrics
-python tools/trc_analyze.py stats trace.trc --sort-by calls     # by call count
-python tools/trc_analyze.py stats trace.trc --sort-by avg       # by average time
-python tools/trc_analyze.py stats trace.trc --sort-by name      # alphabetically
+python tools/trc.py stats trace.trc --sort calls     # by call count
+python tools/trc.py stats trace.trc --sort avg       # by average time
+python tools/trc.py stats trace.trc --sort name      # alphabetically
 
 # Filter before computing stats
-python tools/trc_analyze.py stats trace.trc --filter-function "worker*"
+python tools/trc.py stats trace.trc --function "worker*"
 
 # Export to CSV or JSON
-python tools/trc_analyze.py stats trace.trc --export-csv stats.csv
-python tools/trc_analyze.py stats trace.trc --export-json stats.json
+python tools/trc.py stats trace.trc --csv stats.csv
+python tools/trc.py stats trace.trc --json stats.json
 ```
 
 ### Memory Tracking
@@ -854,7 +854,7 @@ See `examples/example_long_running.cpp` for periodic dump demonstration and `exa
 
 ### Python Post-Processing Tool
 
-The `tools/trc_analyze.py` tool provides powerful post-processing of binary trace dumps with multi-command interface for analysis, filtering, visualization, and batch processing.
+The `tools/trc.py` tool provides powerful post-processing of binary trace dumps with multi-command interface for analysis, filtering, visualization, and batch processing.
 
 **Features:**
 - ✅ Thread-aware ANSI color output (matches runtime colors)
@@ -871,46 +871,45 @@ The `tools/trc_analyze.py` tool provides powerful post-processing of binary trac
 **Basic Usage:**
 ```bash
 # Check version
-python tools/trc_analyze.py --version
+python tools/trc.py --help
 
 # Display single trace file
-python tools/trc_analyze.py display trace.trc
+python tools/trc.py analyze trace.trc
 
 # Display all traces in a directory
-python tools/trc_analyze.py display logs/
+python tools/trc.py analyze logs/
 
 # Display all traces recursively (includes subdirectories)
-python tools/trc_analyze.py display logs/ --recursive
+python tools/trc.py analyze logs/ --recursive
 
 # With thread-aware colors
-python tools/trc_analyze.py display trace.trc --color
+python tools/trc.py analyze trace.trc
 
 # Filter to specific functions
-python tools/trc_analyze.py display trace.trc --filter-function "core_*"
+python tools/trc.py analyze trace.trc --function "core_*"
 
 # Exclude test functions
-python tools/trc_analyze.py display trace.trc --exclude-function "*_test" --exclude-function "debug_*"
+python tools/trc.py analyze trace.trc --function "*_test" --function "debug_*"
 
 # Limit depth
-python tools/trc_analyze.py display trace.trc --max-depth 10
+python tools/trc.py analyze trace.trc --depth 10
 
 # Filter by thread ID
-python tools/trc_analyze.py display trace.trc --filter-thread 0x1234
+python tools/trc.py analyze trace.trc --thread 0x1234
 
 # Complex filtering with colors
-python tools/trc_analyze.py display trace.trc --color --max-depth 8 \
-    --filter-function "my_namespace::*" \
-    --exclude-function "debug_*" \
-    --exclude-file "*/test/*"
+python tools/trc.py analyze trace.trc --depth 8 \
+    --function "my_namespace::*" \
+    --file "*/test/*"
 
 # Show performance statistics (single file)
-python tools/trc_analyze.py stats trace.trc
+python tools/trc.py stats trace.trc
 
 # Show aggregated statistics from directory
-python tools/trc_analyze.py stats logs/ --recursive
+python tools/trc.py stats logs/ --recursive
 
 # Sort files by name before processing
-python tools/trc_analyze.py stats logs/ --sort-files name
+python tools/trc.py stats logs/ --sort name
 ```
 
 **Command-Line Options:**
@@ -1259,29 +1258,19 @@ See `tests/` directory:
 
 See `tools/` directory:
 
-**`trc_analyze.py`** - Trace analysis tool with multiple commands
-- Multi-command interface for display, stats, callgraph, compare, diff, query
-- Usage: `python tools/trc_analyze.py <command> trace.trc`
-- Commands: `display`, `stats`, `callgraph`, `compare`, `diff`, `query`
+**`trc.py`** - All-in-one trace analysis and instrumentation tool
+- Multi-command interface: `instrument`, `analyze`, `stats`, `callgraph`, `compare`, `diff`
+- Usage: `python tools/trc.py <command> [options]`
+- Commands: `instrument` (add/remove TRC_SCOPE), `analyze` (display), `stats` (performance), `callgraph` (visualization), `compare` (regression), `diff` (structural)
 - Supports directory processing with `--recursive` flag
+- Single file deployment - just copy `trc.py` and `test_trc.py`
 - See "Binary Dump Format" section for details
 
-**`trace_instrument.py`** - Automatic code instrumentation
-- Adds/removes TRC_SCOPE() from C++ files
-- Usage: `python tools/trace_instrument.py add file.cpp`
-- Usage: `python tools/trace_instrument.py remove file.cpp`
-- Tests: `python tools/test_trace_instrument.py`
-- See "Automatic Instrumentation Tool" section for details
-
 **Python Tool Tests:**
-- `test_trace_instrument.py` - Unit tests for instrumentation tool (11 tests)
-- `test_trc_analyze.py` - Unit tests for binary parser and filtering (10 tests)
-- `test_trc_callgraph.py` - Unit tests for call graph generation (5 tests)
-- `test_trc_compare.py` - Unit tests for regression detection (3 tests)
-- `test_trc_diff.py` - Unit tests for trace diff (4 tests)
+- `test_trc.py` - Unified test suite for all functionality (53 tests)
 - All require Python 3.6+ (standard library only - no pip install needed)
 - See `tools/requirements.txt` for details
-- Run tests to verify tools work correctly on your system
+- Run `python tools/test_trc.py` to verify tools work correctly on your system
 
 ## Building
 

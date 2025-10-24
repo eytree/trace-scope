@@ -1,6 +1,10 @@
 # Python Requirements for trace-scope Tools
 #
-# All tools use ONLY Python standard library - no external dependencies required!
+# All tools consolidated into TWO files:
+# - trc.py: All-in-one tool (instrumentation, analysis, stats, callgraph, compare, diff)
+# - test_trc.py: Unified test suite (53 tests)
+#
+# Uses ONLY Python standard library - no external dependencies required!
 #
 # Standard library modules used:
 # - argparse (command-line parsing)
@@ -10,8 +14,13 @@
 # - tempfile (testing)
 # - csv, json (export formats)
 # - collections (defaultdict for call graphs)
+# - unittest (testing framework)
 #
 # Minimum Python version: 3.6+
+#
+# Usage:
+#   python trc.py <command> [options]     # Run tool
+#   python test_trc.py                    # Run tests
 #
 # Optional (for enhanced call graph visualization):
 # graphviz>=0.20  # For rendering DOT files to PNG/SVG/PDF

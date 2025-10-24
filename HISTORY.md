@@ -4,6 +4,66 @@ This document tracks major features, design decisions, and implementation milest
 
 ---
 
+## October 24, 2025 - v0.12.0-alpha
+
+### Python Tools Consolidation
+**Version:** 0.12.0-alpha  
+**Enhancement:** Consolidated all Python tools into 2 files for easy deployment
+
+**Problem:**
+- 11 separate Python files (6 tools + 5 test files) made deployment complex
+- Users needed to download/copy multiple files
+- Scattered functionality across different scripts
+- Difficult to discover all available commands
+
+**Solution:** Consolidated into 2 files with unified CLI:
+
+**New Structure:**
+```
+tools/
+├── trc.py          # All-in-one tool (2,600+ lines)
+└── test_trc.py     # Unified test suite (1,500+ lines)
+```
+
+**Consolidated Tools in `trc.py`:**
+- `instrument` - Add/remove TRC_SCOPE() and TRC_ARG() macros
+- `analyze` - Display and analyze trace files
+- `stats` - Generate performance statistics  
+- `callgraph` - Generate call graphs
+- `compare` - Compare trace performance
+- `diff` - Diff two trace files
+
+**Key Benefits:**
+- **Easy deployment:** Just copy 2 files instead of 11
+- **Single tool:** All functionality in one place with `python trc.py <command>`
+- **Unified testing:** All 53 tests in one file using unittest framework
+- **Better discoverability:** `python trc.py --help` shows all commands
+- **Zero dependencies:** Only Python standard library required
+
+**Migration Guide:**
+```bash
+# Old way (multiple files)
+python tools/trc_instrument.py add file.cpp
+python tools/trc_analyze.py display trace.trc
+python tools/trc_analyze.py stats trace.trc
+
+# New way (single tool)
+python tools/trc.py instrument add file.cpp
+python tools/trc.py analyze trace.trc
+python tools/trc.py stats trace.trc
+```
+
+**Files Removed:**
+- `trc_instrument.py`, `trc_analyze.py`, `trc_callgraph.py`, `trc_compare.py`, `trc_diff.py`, `trc_common.py`
+- `test_trc_instrument.py`, `test_trc_analyze.py`, `test_trc_callgraph.py`, `test_trc_compare.py`, `test_trc_diff.py`
+
+**Documentation Updated:**
+- README.md updated with new command syntax
+- requirements.txt updated to reflect consolidated structure
+- All examples updated to use `trc.py`
+
+---
+
 ## October 24, 2025 - v0.11.0-alpha
 
 ### Breaking Change: Rename All TRACE_* Macros to TRC_*
