@@ -9,6 +9,8 @@
  *  - Per-thread lock-free ring buffer; global flush to text.
  *  - dump_binary(path): compact binary dump + tools/trc_pretty.py pretty printer.
  *  - DLL-safe mode via TRACE_SETUP_DLL_SHARED() macro (shares state across DLLs).
+ *  - Configurable flush behavior: never, outermost-only (default), or every scope.
+ *  - Auto-detecting shared memory mode with manual override options.
  *
  * Build-time defines:
  *   TRACE_ENABLED   (default 1)
@@ -36,6 +38,26 @@
  *
  *   This automatically shares Config, Registry, and Ring buffers across all DLLs.
  *   No special build flags or compilation setup required.
+ *
+ * Configuration Options:
+ *   The library supports extensive configuration via config files or programmatic API:
+ *
+ *   Flush Behavior (flush_mode):
+ *   - "never": No automatic flushing on scope exit
+ *   - "outermost": Flush only when returning to depth 0 (default)
+ *   - "every": Flush on every scope exit (high overhead, use with caution)
+ *
+ *   Shared Memory Mode (shared_memory_mode):
+ *   - "auto": Auto-detect if shared memory is needed (default)
+ *   - "disabled": Force thread_local mode even in DLL contexts
+ *   - "enabled": Always use shared memory mode
+ *
+ *   Example config file:
+ *   @code
+ *   [modes]
+ *   flush_mode = outermost
+ *   shared_memory_mode = auto
+ *   @endcode
  */
 
 #include <cstdint>
@@ -297,6 +319,24 @@ inline bool should_trace(const char* func, const char* file, int depth);
 } // namespace filter_utils
 
 /**
+ * @brief Flush behavior modes for scope exit.
+ */
+enum class FlushMode {
+    NEVER,           ///< No auto-flush on scope exit
+    OUTERMOST_ONLY,  ///< Flush only when depth returns to 0 (default)
+    EVERY_SCOPE      ///< Flush on every scope exit (high overhead)
+};
+
+/**
+ * @brief Shared memory usage modes.
+ */
+enum class SharedMemoryMode {
+    AUTO,      ///< Auto-detect: use shared if DLL detected (default)
+    DISABLED,  ///< Never use shared memory (force thread_local)
+    ENABLED    ///< Always use shared memory
+};
+
+/**
  * @brief Global configuration for trace output formatting and behavior.
  * 
  * All settings can be modified at runtime before tracing begins.
@@ -359,6 +399,10 @@ struct Config {
     // Performance metrics and memory tracking
     bool print_stats = false;        ///< Print performance statistics at program exit
     bool track_memory = false;       ///< Sample RSS memory at each trace point (low overhead ~1-5µs)
+    
+    // Flush and shared memory behavior
+    FlushMode flush_mode = FlushMode::OUTERMOST_ONLY;  ///< When to auto-flush on scope exit
+    SharedMemoryMode shared_memory_mode = SharedMemoryMode::AUTO;  ///< Shared memory usage mode
     
     // Binary dump configuration
     const char* dump_prefix = "trace";  ///< Filename prefix for binary dumps (default: "trace")
@@ -531,6 +575,39 @@ namespace shared_memory {
         return "/trace_scope_fallback";
 #endif
     }
+}
+
+/**
+ * @brief Determine if shared memory should be used based on configuration and detection.
+ * 
+ * Checks the shared_memory_mode setting and auto-detects if shared memory
+ * is already in use by another process component.
+ * 
+ * @return true if shared memory should be used, false for thread_local mode
+ */
+inline bool should_use_shared_memory() {
+    Config& cfg = get_config();
+    
+    if (cfg.shared_memory_mode == SharedMemoryMode::DISABLED) {
+        return false;
+    }
+    if (cfg.shared_memory_mode == SharedMemoryMode::ENABLED) {
+        return true;
+    }
+    
+    // AUTO mode: detect if shared memory already exists
+    std::string shm_name = shared_memory::get_shared_memory_name();
+    auto handle = shared_memory::create_or_open_shared_memory(
+        shm_name.c_str(),
+        sizeof(dll_shared_state::SharedTraceState),
+        false  // try to open existing
+    );
+    
+    bool exists = handle.valid;
+    if (exists) {
+        shared_memory::close_shared_memory(handle);
+    }
+    return exists;
 }
 
 // DLL-safe shared state management via shared memory
@@ -1615,6 +1692,34 @@ inline bool Config::load_from_file(const char* path) {
             else if (key == "auto_flush_threshold") auto_flush_threshold = ini_parser::parse_float(value);
             else if (key == "immediate_flush_interval_ms") immediate_flush_interval_ms = ini_parser::parse_int(value);
             else if (key == "immediate_queue_size") immediate_queue_size = (size_t)ini_parser::parse_int(value);
+            else if (key == "flush_mode") {
+                std::string mode_str = ini_parser::trim(value);
+                // Convert to lowercase for case-insensitive comparison
+                for (char& c : mode_str) {
+                    c = (char)std::tolower((unsigned char)c);
+                }
+                if (mode_str == "never") flush_mode = FlushMode::NEVER;
+                else if (mode_str == "outermost") flush_mode = FlushMode::OUTERMOST_ONLY;
+                else if (mode_str == "every") flush_mode = FlushMode::EVERY_SCOPE;
+                else {
+                    std::fprintf(stderr, "trace-scope: Warning: Unknown flush_mode '%s' in %s:%d\n", 
+                                value.c_str(), path, line_num);
+                }
+            }
+            else if (key == "shared_memory_mode") {
+                std::string mode_str = ini_parser::trim(value);
+                // Convert to lowercase for case-insensitive comparison
+                for (char& c : mode_str) {
+                    c = (char)std::tolower((unsigned char)c);
+                }
+                if (mode_str == "auto") shared_memory_mode = SharedMemoryMode::AUTO;
+                else if (mode_str == "disabled") shared_memory_mode = SharedMemoryMode::DISABLED;
+                else if (mode_str == "enabled") shared_memory_mode = SharedMemoryMode::ENABLED;
+                else {
+                    std::fprintf(stderr, "trace-scope: Warning: Unknown shared_memory_mode '%s' in %s:%d\n", 
+                                value.c_str(), path, line_num);
+                }
+            }
         }
         else if (current_section == "filter") {
             if (key == "include_function") {
@@ -1867,19 +1972,18 @@ struct ThreadRingGuard {
  * @return Reference to the current thread's Ring
  */
 inline Ring& thread_ring() {
-    // DLL shared mode: use centralized Ring storage
-    if (dll_shared_state::get_shared_registry()) {
-        // Cache the pointer in thread_local storage to reduce overhead
+    // Check if we should use shared mode
+    if (dll_shared_state::get_shared_registry() || should_use_shared_memory()) {
+        // Shared memory path (existing logic)
         static thread_local Ring* cached_ring = nullptr;
         if (!cached_ring) {
-            // Install cleanup guard (once per thread)
             static thread_local ThreadRingGuard cleanup_guard;
             cached_ring = dll_shared_state::get_shared_registry()->get_or_create_thread_ring();
         }
         return *cached_ring;
     }
     
-    // Header-only mode: use thread_local storage (existing behavior)
+    // Thread-local path (existing logic)
     static thread_local Ring ring;
     static thread_local bool inited = false;
     if (!inited) {
@@ -2460,15 +2564,20 @@ struct Scope {
     /**
      * @brief Destruct the scope guard and write Exit event.
      * 
-     * Writes Exit event with calculated duration. If auto_flush_at_exit
-     * is enabled and we're returning to depth 0, triggers flush_all().
+     * Writes Exit event with calculated duration. Flush behavior is
+     * controlled by the flush_mode configuration setting.
      */
     inline ~Scope() {
 #if TRACE_ENABLED
         Ring& r = thread_ring();
         r.write(EventType::Exit, func, file, line);
-        // Auto-flush when returning to depth 0 (outermost scope exits)
-        check_auto_flush_on_scope_exit(r.depth);
+        
+        Config& cfg = get_config();
+        if (cfg.flush_mode == FlushMode::EVERY_SCOPE) {
+            flush_all();
+        } else if (cfg.flush_mode == FlushMode::OUTERMOST_ONLY && r.depth == 0) {
+            flush_all();
+        }
 #endif
     }
 };

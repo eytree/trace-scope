@@ -4,6 +4,124 @@ This document tracks major features, design decisions, and implementation milest
 
 ---
 
+## October 22, 2025 - v0.10.0-alpha
+
+### Configurable Flush Behavior and Auto-Detecting Shared Memory
+**Version:** 0.10.0-alpha  
+**Feature:** Configurable flush behavior and three-mode shared memory system
+
+**Problem:** 
+- Flush behavior was hardcoded to only flush on outermost scope exit
+- Shared memory mode required explicit setup even when auto-detection was possible
+- No flexibility for different use cases (performance vs safety trade-offs)
+
+**Solution:** Implemented configurable flush behavior and auto-detecting shared memory system:
+
+**1. Configurable Flush Behavior:**
+- Added `FlushMode` enum with three options:
+  - `NEVER`: No auto-flush on scope exit (maximum performance)
+  - `OUTERMOST_ONLY`: Flush only when depth returns to 0 (default, balanced)
+  - `EVERY_SCOPE`: Flush on every scope exit (maximum safety, high overhead)
+- Updated `Scope::~Scope()` to use configurable flush mode
+- Added `Config::flush_mode` field with default `FlushMode::OUTERMOST_ONLY`
+
+**2. Three-Mode Shared Memory System:**
+- Added `SharedMemoryMode` enum with three options:
+  - `AUTO`: Auto-detect if shared memory is needed (default)
+  - `DISABLED`: Force thread_local mode even in DLL contexts
+  - `ENABLED`: Always use shared memory mode
+- Implemented `should_use_shared_memory()` auto-detection function
+- Updated `thread_ring()` to respect shared memory mode setting
+- Added `Config::shared_memory_mode` field with default `SharedMemoryMode::AUTO`
+
+**3. Configuration File Support:**
+- Added parsing for both new options in `[modes]` section:
+  ```ini
+  [modes]
+  flush_mode = outermost        # Options: never, outermost, every
+  shared_memory_mode = auto     # Options: auto, disabled, enabled
+  ```
+- Case-insensitive parsing with proper error messages for invalid values
+
+**4. Auto-Detection Logic:**
+- `AUTO` mode detects if shared memory already exists by attempting to open it
+- If shared memory exists, uses shared mode; otherwise uses thread_local
+- Works seamlessly with existing `TRACE_SETUP_DLL_SHARED()` macro
+- No manual configuration needed for most use cases
+
+**Key Design Decisions:**
+- **Why configurable flush?** Different use cases need different trade-offs (performance vs safety)
+- **Why auto-detect shared memory?** Simplifies usage while maintaining flexibility
+- **Why three modes?** Covers all use cases: auto-detect (default), force-off, force-on
+- **Why outermost default?** Maintains backward compatibility while allowing customization
+
+**Performance Impact:**
+- `flush_mode = NEVER`: Zero flush overhead (maximum performance)
+- `flush_mode = OUTERMOST_ONLY`: Minimal overhead, same as before (default)
+- `flush_mode = EVERY_SCOPE`: High overhead, use only when needed
+- `shared_memory_mode = AUTO`: Minimal detection overhead on first call
+- `shared_memory_mode = DISABLED`: Zero shared memory overhead
+- `shared_memory_mode = ENABLED`: Shared memory overhead even in single-exe programs
+
+**API Changes:**
+```cpp
+// New configuration options
+trace::config.flush_mode = trace::FlushMode::OUTERMOST_ONLY;  // Default
+trace::config.shared_memory_mode = trace::SharedMemoryMode::AUTO;  // Default
+
+// Programmatic configuration
+trace::config.flush_mode = trace::FlushMode::EVERY_SCOPE;  // High safety
+trace::config.shared_memory_mode = trace::SharedMemoryMode::ENABLED;  // Force shared
+
+// Configuration file
+trace::load_config("trace.conf");  // Loads flush_mode and shared_memory_mode
+```
+
+**Configuration Examples:**
+```ini
+# High-performance mode (no flushing, thread-local)
+[modes]
+flush_mode = never
+shared_memory_mode = disabled
+
+# High-safety mode (flush every scope, shared memory)
+[modes]
+flush_mode = every
+shared_memory_mode = enabled
+
+# Balanced mode (default behavior)
+[modes]
+flush_mode = outermost
+shared_memory_mode = auto
+```
+
+**Benefits:**
+- ✅ **Flexible flush behavior**: Choose between performance and safety
+- ✅ **Auto-detecting shared memory**: No manual setup needed in most cases
+- ✅ **Backward compatible**: Default behavior unchanged
+- ✅ **DLL-friendly**: Auto-detects when shared memory is needed
+- ✅ **Performance options**: Can disable flushing and shared memory for maximum speed
+- ✅ **Safety options**: Can force flush every scope for maximum safety
+
+**Use Cases:**
+1. **High-performance tracing**: `flush_mode = never, shared_memory_mode = disabled`
+2. **DLL debugging**: `shared_memory_mode = auto` (default, auto-detects)
+3. **Real-time monitoring**: `flush_mode = every` for immediate output
+4. **Production tracing**: `flush_mode = outermost` (default, balanced)
+5. **Single-executable**: `shared_memory_mode = disabled` to avoid shared memory overhead
+
+**Files Modified:**
+- `include/trace-scope/trace_scope.hpp` - Added enums, config fields, auto-detection logic, updated Scope destructor and thread_ring()
+- `VERSION` - Bumped to 0.10.0-alpha
+- `HISTORY.md` - This entry
+
+**Migration Guide:**
+- **No code changes needed**: Default behavior is identical to v0.9.0
+- **Optional configuration**: Add flush_mode and shared_memory_mode to config files if needed
+- **DLL users**: No changes needed, auto-detection works with existing `TRACE_SETUP_DLL_SHARED()`
+
+---
+
 ## October 20, 2025 - v0.9.0-alpha
 
 ### Async Immediate Mode
