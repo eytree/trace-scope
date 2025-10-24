@@ -4,6 +4,61 @@ This document tracks major features, design decisions, and implementation milest
 
 ---
 
+## October 24, 2025 - v0.13.0-alpha
+
+### CMakePresets Build System
+**Version:** 0.13.0-alpha  
+**Enhancement:** Replaced custom build scripts with CMakePresets for cross-platform portability and IDE integration
+
+**Problem:**
+- Custom PowerShell/batch scripts were Windows-only
+- Required manual environment setup (vcvarsall.bat)
+- No IDE integration (Visual Studio, VS Code, CLion)
+- Duplicated logic across multiple scripts
+- Hard to discover available build configurations
+
+**Solution:** Implemented comprehensive CMakePresets.json with:
+
+**Cross-Platform Presets:**
+- **Windows**: `windows-msvc-debug`, `windows-msvc-release`, `windows-msvc-release-doublebuf`, `windows-clang-debug`, `windows-clang-release`
+- **Linux**: `linux-gcc-debug`, `linux-gcc-release`, `linux-clang-debug`, `linux-clang-release`
+- **macOS**: `macos-clang-debug`, `macos-clang-release`
+
+**Key Features:**
+- **IDE Integration**: Native support in Visual Studio, VS Code, CLion, Qt Creator
+- **Cross-Platform**: Same workflow on Windows/Linux/macOS
+- **Discoverable**: `cmake --list-presets` shows all available configurations
+- **Inheritance**: Base presets reduce duplication
+- **User Overrides**: CMakeUserPresets.json for local customization
+
+**Usage Examples:**
+```bash
+# List available presets
+cmake --list-presets
+
+# Configure and build
+cmake --preset windows-msvc-release
+cmake --build --preset windows-msvc-release
+
+# Run tests
+ctest --preset windows-msvc-release
+```
+
+**Migration:**
+- Old scripts marked as deprecated with warning messages
+- CMakePresets.json provides all functionality
+- Traditional CMake commands still work as fallback
+- Updated README.md with CMakePresets documentation
+
+**Benefits:**
+- **Portable**: Works on all platforms with same commands
+- **IDE-Friendly**: Full integration with development environments
+- **Maintainable**: Single configuration file vs multiple scripts
+- **Discoverable**: Built-in help and preset listing
+- **Flexible**: Easy to add new configurations
+
+---
+
 ## October 24, 2025 - v0.12.0-alpha
 
 ### Python Tools Consolidation

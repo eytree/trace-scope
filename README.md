@@ -1274,6 +1274,44 @@ See `tools/` directory:
 
 ## Building
 
+### Quick Start with CMakePresets (Recommended)
+
+**List available presets:**
+```bash
+cmake --list-presets
+```
+
+**Configure and build:**
+```bash
+# Windows MSVC Release
+cmake --preset windows-msvc-release
+cmake --build --preset windows-msvc-release
+
+# Windows Clang Debug
+cmake --preset windows-clang-debug
+cmake --build --preset windows-clang-debug
+
+# Linux GCC Release
+cmake --preset linux-gcc-release
+cmake --build --preset linux-gcc-release
+
+# macOS Clang Release
+cmake --preset macos-clang-release
+cmake --build --preset macos-clang-release
+```
+
+**Run tests:**
+```bash
+ctest --preset windows-msvc-release
+```
+
+**Available presets:**
+- **Windows**: `windows-msvc-debug`, `windows-msvc-release`, `windows-msvc-release-doublebuf`, `windows-clang-debug`, `windows-clang-release`
+- **Linux**: `linux-gcc-debug`, `linux-gcc-release`, `linux-clang-debug`, `linux-clang-release`
+- **macOS**: `macos-clang-debug`, `macos-clang-release`
+
+### Traditional CMake (Fallback)
+
 ```bash
 mkdir build && cd build
 cmake ..
