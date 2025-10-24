@@ -47,7 +47,8 @@ TEST(binary_format_and_python_parser) {
     
     // Dump binary
     const char* bin_file = "test_binary_format.bin";
-    bool ok = trace::dump_binary(bin_file);
+    std::string filename = trace::dump_binary(bin_file);
+    bool ok = !filename.empty();
     TEST_ASSERT(ok, "Binary dump failed");
     
     std::printf("\n=== Binary Format Test ===\n");

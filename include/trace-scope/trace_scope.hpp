@@ -577,39 +577,6 @@ namespace shared_memory {
     }
 }
 
-/**
- * @brief Determine if shared memory should be used based on configuration and detection.
- * 
- * Checks the shared_memory_mode setting and auto-detects if shared memory
- * is already in use by another process component.
- * 
- * @return true if shared memory should be used, false for thread_local mode
- */
-inline bool should_use_shared_memory() {
-    Config& cfg = get_config();
-    
-    if (cfg.shared_memory_mode == SharedMemoryMode::DISABLED) {
-        return false;
-    }
-    if (cfg.shared_memory_mode == SharedMemoryMode::ENABLED) {
-        return true;
-    }
-    
-    // AUTO mode: detect if shared memory already exists
-    std::string shm_name = shared_memory::get_shared_memory_name();
-    auto handle = shared_memory::create_or_open_shared_memory(
-        shm_name.c_str(),
-        sizeof(dll_shared_state::SharedTraceState),
-        false  // try to open existing
-    );
-    
-    bool exists = handle.valid;
-    if (exists) {
-        shared_memory::close_shared_memory(handle);
-    }
-    return exists;
-}
-
 // DLL-safe shared state management via shared memory
 namespace dll_shared_state {
     // Shared state structure
@@ -677,6 +644,40 @@ namespace dll_shared_state {
         if (state) state->registry_ptr = reg;
     }
 }
+
+/**
+ * @brief Determine if shared memory should be used based on configuration and detection.
+ * 
+ * Checks the shared_memory_mode setting and auto-detects if shared memory
+ * is already in use by another process component.
+ * 
+ * @return true if shared memory should be used, false for thread_local mode
+ */
+inline bool should_use_shared_memory() {
+    Config& cfg = get_config();
+    
+    if (cfg.shared_memory_mode == SharedMemoryMode::DISABLED) {
+        return false;
+    }
+    if (cfg.shared_memory_mode == SharedMemoryMode::ENABLED) {
+        return true;
+    }
+    
+    // AUTO mode: detect if shared memory already exists
+    std::string shm_name = shared_memory::get_shared_memory_name();
+    auto handle = shared_memory::create_or_open_shared_memory(
+        shm_name.c_str(),
+        sizeof(dll_shared_state::SharedTraceState),
+        false  // try to open existing
+    );
+    
+    bool exists = handle.valid;
+    if (exists) {
+        shared_memory::close_shared_memory(handle);
+    }
+    return exists;
+}
+
 
 /** @brief Type of trace event */
 enum class EventType : uint8_t { 

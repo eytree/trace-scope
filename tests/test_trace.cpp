@@ -53,7 +53,8 @@ TEST(multi_threaded_binary_dump) {
     trace::flush_all();
     
     // Create binary dump and verify success
-    bool ok = trace::dump_binary("test_trace.bin");
+    std::string filename = trace::dump_binary("test_trace.bin");
+    bool ok = !filename.empty();
     TEST_ASSERT(ok, "dump_binary failed");
 
     // Verify binary file exists and has content

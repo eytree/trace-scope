@@ -234,8 +234,8 @@ TEST(binary_dump) {
     std::fclose(trace::config.out);
     
     // Test binary dump
-    bool ok = trace::dump_binary("test_comprehensive.bin");
-    TEST_ASSERT(ok, "Binary dump failed");
+    std::string filename = trace::dump_binary("test_comprehensive.bin");
+    TEST_ASSERT(!filename.empty(), "Binary dump failed");
     
     // Verify file exists and has content
     FILE* f = std::fopen("test_comprehensive.bin", "rb");
