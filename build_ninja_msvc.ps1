@@ -76,7 +76,7 @@ try {
     )
     
     if ($DoubleBuf) {
-        $cmakeArgs += "-DTRACE_DOUBLE_BUFFER=ON"
+        $cmakeArgs += "-DTRC_DOUBLE_BUFFER=ON"
         Write-Host "  - Double-buffering: ENABLED" -ForegroundColor Yellow
     } else {
         Write-Host "  - Double-buffering: disabled (default)" -ForegroundColor Gray

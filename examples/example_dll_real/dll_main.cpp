@@ -3,7 +3,7 @@
  * @brief Example main executable that uses a traced DLL
  * 
  * This example demonstrates how to set up trace state sharing
- * between a main executable and a DLL using TRACE_SETUP_DLL_SHARED().
+ * between a main executable and a DLL using TRC_SETUP_DLL_SHARED().
  * All function calls across the DLL boundary will be traced
  * with unified output.
  */
@@ -17,32 +17,32 @@
  * @brief Test function in main executable
  */
 void main_test_function() {
-    TRACE_SCOPE();
-    TRACE_MSG("Main executable test function");
+    TRC_SCOPE();
+    TRC_MSG("Main executable test function");
     
     // Call DLL functions
-    TRACE_MSG("Calling DLL math functions...");
+    TRC_MSG("Calling DLL math functions...");
     
     int test_value = 5;
     long long fact = factorial(test_value);
     long long fib = fibonacci(test_value);
     
-    TRACE_MSG("Results: %d! = %lld, F(%d) = %lld", test_value, fact, test_value, fib);
+    TRC_MSG("Results: %d! = %lld, F(%d) = %lld", test_value, fact, test_value, fib);
 }
 
 /**
  * @brief Test prime number checking
  */
 void test_prime_numbers() {
-    TRACE_SCOPE();
-    TRACE_MSG("Testing prime number checking");
+    TRC_SCOPE();
+    TRC_MSG("Testing prime number checking");
     
     std::vector<int> test_numbers = {2, 3, 4, 5, 17, 25, 29, 31, 100};
     
     for (int n : test_numbers) {
-        TRACE_MSG("Checking if %d is prime", n);
+        TRC_MSG("Checking if %d is prime", n);
         bool prime = is_prime(n);
-        TRACE_MSG("%d is %s", n, prime ? "prime" : "not prime");
+        TRC_MSG("%d is %s", n, prime ? "prime" : "not prime");
     }
 }
 
@@ -50,8 +50,8 @@ void test_prime_numbers() {
  * @brief Test GCD calculations
  */
 void test_gcd_calculations() {
-    TRACE_SCOPE();
-    TRACE_MSG("Testing GCD calculations");
+    TRC_SCOPE();
+    TRC_MSG("Testing GCD calculations");
     
     std::vector<std::pair<int, int>> test_pairs = {
         {12, 18}, {48, 18}, {17, 13}, {100, 25}, {0, 5}
@@ -59,9 +59,9 @@ void test_gcd_calculations() {
     
     for (const auto& pair : test_pairs) {
         int a = pair.first, b = pair.second;
-        TRACE_MSG("Calculating GCD of %d and %d", a, b);
+        TRC_MSG("Calculating GCD of %d and %d", a, b);
         int result = gcd(a, b);
-        TRACE_MSG("GCD(%d, %d) = %d", a, b, result);
+        TRC_MSG("GCD(%d, %d) = %d", a, b, result);
     }
 }
 
@@ -69,15 +69,15 @@ void test_gcd_calculations() {
  * @brief Test complex calculation
  */
 void test_complex_calculation() {
-    TRACE_SCOPE();
-    TRACE_MSG("Testing complex calculation");
+    TRC_SCOPE();
+    TRC_MSG("Testing complex calculation");
     
     int test_values[] = {3, 4, 5, 6};
     
     for (int n : test_values) {
-        TRACE_MSG("Running complex calculation for n=%d", n);
+        TRC_MSG("Running complex calculation for n=%d", n);
         long long result = complex_calculation(n);
-        TRACE_MSG("Complex calculation result for n=%d: %lld", n, result);
+        TRC_MSG("Complex calculation result for n=%d: %lld", n, result);
     }
 }
 
@@ -88,7 +88,7 @@ int main() {
     // ========================================================================
     // CRITICAL: Set up DLL state sharing BEFORE any tracing occurs
     // ========================================================================
-    TRACE_SETUP_DLL_SHARED();
+    TRC_SETUP_DLL_SHARED();
     
     // Configure trace output
     trace::get_config().out = std::fopen("dll_example_output.log", "w");
@@ -103,10 +103,10 @@ int main() {
     
     std::printf("=== DLL State Sharing Example ===\n");
     std::printf("This example demonstrates trace state sharing between\n");
-    std::printf("a main executable and a DLL using TRACE_SETUP_DLL_SHARED().\n\n");
+    std::printf("a main executable and a DLL using TRC_SETUP_DLL_SHARED().\n\n");
     
-    TRACE_SCOPE();
-    TRACE_MSG("Starting DLL example");
+    TRC_SCOPE();
+    TRC_MSG("Starting DLL example");
     
     // Test 1: Basic function calls
     std::printf("Test 1: Basic math functions\n");
@@ -124,7 +124,7 @@ int main() {
     std::printf("Test 4: Complex calculation\n");
     test_complex_calculation();
     
-    TRACE_MSG("DLL example completed successfully");
+    TRC_MSG("DLL example completed successfully");
     
     // Flush all traces before closing
     trace::flush_all();

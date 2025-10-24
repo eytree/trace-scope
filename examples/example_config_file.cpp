@@ -18,15 +18,15 @@
 #include <cstdio>
 
 void worker_function(int id) {
-    TRACE_SCOPE();
-    TRACE_LOG << "Worker " << id << " starting";
+    TRC_SCOPE();
+    TRC_LOG << "Worker " << id << " starting";
     
     for (int i = 0; i < 3; ++i) {
-        TRACE_MSG("Processing item %d", i);
+        TRC_MSG("Processing item %d", i);
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     
-    TRACE_LOG << "Worker " << id << " complete";
+    TRC_LOG << "Worker " << id << " complete";
 }
 
 int main() {
@@ -56,8 +56,8 @@ int main() {
     
     // Run some traced code
     {
-        TRACE_SCOPE();
-        TRACE_LOG << "Starting workers";
+        TRC_SCOPE();
+        TRC_LOG << "Starting workers";
         
         std::thread t1([](){ worker_function(1); });
         std::thread t2([](){ worker_function(2); });
@@ -65,7 +65,7 @@ int main() {
         t1.join();
         t2.join();
         
-        TRACE_LOG << "All workers complete";
+        TRC_LOG << "All workers complete";
     }
     
     // Flush all traces
@@ -77,7 +77,7 @@ int main() {
     std::printf("\n=== DLL Mode with Config File ===\n");
     std::printf("In your main.cpp for DLL projects:\n\n");
     std::printf("int main() {\n");
-    std::printf("    TRACE_SETUP_DLL_SHARED_WITH_CONFIG(\"trace.conf\");\n");
+    std::printf("    TRC_SETUP_DLL_SHARED_WITH_CONFIG(\"trace.conf\");\n");
     std::printf("    // ... rest of code ...\n");
     std::printf("}\n\n");
     std::printf("That's it! One line for DLL setup + config loading!\n");

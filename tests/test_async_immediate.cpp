@@ -17,9 +17,9 @@ TEST(basic_async_immediate) {
     trace::config.mode = trace::TracingMode::Immediate;
     
     {
-        TRACE_SCOPE();
-        TRACE_MSG("Test message 1");
-        TRACE_MSG("Test message 2");
+        TRC_SCOPE();
+        TRC_MSG("Test message 1");
+        TRC_MSG("Test message 2");
     }
     
     // Force flush to ensure events written
@@ -53,8 +53,8 @@ TEST(multi_threaded_async_immediate) {
     for (int t = 0; t < num_threads; ++t) {
         threads.emplace_back([t, iterations]() {
             for (int i = 0; i < iterations; ++i) {
-                TRACE_SCOPE();
-                TRACE_MSG("Thread %d iteration %d", t, i);
+                TRC_SCOPE();
+                TRC_MSG("Thread %d iteration %d", t, i);
                 std::this_thread::sleep_for(std::chrono::microseconds(10));
             }
         });
@@ -91,7 +91,7 @@ TEST(flush_immediate_queue_blocks) {
     
     // Generate events
     for (int i = 0; i < 50; ++i) {
-        TRACE_MSG("Event %d", i);
+        TRC_MSG("Event %d", i);
     }
     
     // Flush should block until all events written
@@ -122,8 +122,8 @@ TEST(async_queue_atexit_handler) {
     trace::config.mode = trace::TracingMode::Immediate;
     
     {
-        TRACE_SCOPE();
-        TRACE_MSG("Before shutdown");
+        TRC_SCOPE();
+        TRC_MSG("Before shutdown");
     }
     
     // Manually stop async queue (simulates atexit)
@@ -152,7 +152,7 @@ TEST(configurable_flush_interval) {
     // Start async mode with custom config
     trace::start_async_immediate();
     
-    TRACE_MSG("Event with 10ms interval");
+    TRC_MSG("Event with 10ms interval");
     
     // Wait a bit longer than interval
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -181,8 +181,8 @@ TEST(hybrid_mode_with_async) {
     trace::config.mode = trace::TracingMode::Hybrid;
     
     {
-        TRACE_SCOPE();
-        TRACE_MSG("Hybrid mode message");
+        TRC_SCOPE();
+        TRC_MSG("Hybrid mode message");
     }
     
     // Flush both buffered and immediate outputs

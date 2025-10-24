@@ -28,8 +28,8 @@ void test_function() {
 }
 """
         result = add_trace_scopes(code)
-        # Should have exactly 1 TRACE_SCOPE (in test_function, not in for loop)
-        self.assertEqual(result.count('TRACE_SCOPE()'), 1)
+        # Should have exactly 1 TRC_SCOPE (in test_function, not in for loop)
+        self.assertEqual(result.count('TRC_SCOPE()'), 1)
         
     def test_if_statement_not_instrumented(self):
         """Test that if statements are not instrumented."""
@@ -41,8 +41,8 @@ void test_function() {
 }
 """
         result = add_trace_scopes(code)
-        # Should have exactly 1 TRACE_SCOPE (in test_function, not in if)
-        self.assertEqual(result.count('TRACE_SCOPE()'), 1)
+        # Should have exactly 1 TRC_SCOPE (in test_function, not in if)
+        self.assertEqual(result.count('TRC_SCOPE()'), 1)
     
     def test_while_loop_not_instrumented(self):
         """Test that while loops are not instrumented."""
@@ -54,7 +54,7 @@ void test_function() {
 }
 """
         result = add_trace_scopes(code)
-        self.assertEqual(result.count('TRACE_SCOPE()'), 1)
+        self.assertEqual(result.count('TRC_SCOPE()'), 1)
     
     def test_switch_statement_not_instrumented(self):
         """Test that switch statements are not instrumented."""
@@ -69,7 +69,7 @@ void test_function(int x) {
 }
 """
         result = add_trace_scopes(code)
-        self.assertEqual(result.count('TRACE_SCOPE()'), 1)
+        self.assertEqual(result.count('TRC_SCOPE()'), 1)
     
     def test_catch_block_not_instrumented(self):
         """Test that catch blocks are not instrumented."""
@@ -83,9 +83,9 @@ void test_function() {
 }
 """
         result = add_trace_scopes(code)
-        # Should have exactly 1 TRACE_SCOPE (in test_function)
+        # Should have exactly 1 TRC_SCOPE (in test_function)
         # try and catch blocks should not be instrumented
-        self.assertEqual(result.count('TRACE_SCOPE()'), 1)
+        self.assertEqual(result.count('TRC_SCOPE()'), 1)
     
     def test_else_if_not_instrumented(self):
         """Test that else if statements are not instrumented."""
@@ -101,7 +101,7 @@ void test_function(int x) {
 }
 """
         result = add_trace_scopes(code)
-        self.assertEqual(result.count('TRACE_SCOPE()'), 1)
+        self.assertEqual(result.count('TRC_SCOPE()'), 1)
     
     def test_do_while_not_instrumented(self):
         """Test that do-while loops are not instrumented."""
@@ -114,7 +114,7 @@ void test_function() {
 }
 """
         result = add_trace_scopes(code)
-        self.assertEqual(result.count('TRACE_SCOPE()'), 1)
+        self.assertEqual(result.count('TRC_SCOPE()'), 1)
     
     def test_mixed_control_flow(self):
         """Test file with multiple control flow statements and functions."""
@@ -142,8 +142,8 @@ void function_three() {
 }
 """
         result = add_trace_scopes(code)
-        # Should have exactly 3 TRACE_SCOPE calls (one per function)
-        self.assertEqual(result.count('TRACE_SCOPE()'), 3)
+        # Should have exactly 3 TRC_SCOPE calls (one per function)
+        self.assertEqual(result.count('TRC_SCOPE()'), 3)
 
 
 class TestFunctionDetection(unittest.TestCase):
@@ -313,17 +313,17 @@ T max_value(T a, T b) {
 
 
 class TestTraceInstrumentation(unittest.TestCase):
-    """Test adding and removing TRACE_SCOPE() calls."""
+    """Test adding and removing TRC_SCOPE() calls."""
     
     def test_add_trace_scope(self):
-        """Test adding TRACE_SCOPE() to functions."""
+        """Test adding TRC_SCOPE() to functions."""
         code = """void foo() {
     int x = 1;
 }"""
         result = add_trace_scopes(code)
-        self.assertIn('TRACE_SCOPE()', result)
+        self.assertIn('TRC_SCOPE()', result)
         lines = result.split('\n')
-        self.assertTrue(any('TRACE_SCOPE()' in line for line in lines))
+        self.assertTrue(any('TRC_SCOPE()' in line for line in lines))
     
     def test_add_preserves_indentation(self):
         """Test that indentation is preserved."""
@@ -333,33 +333,33 @@ class TestTraceInstrumentation(unittest.TestCase):
 }"""
         result = add_trace_scopes(code)
         lines = result.split('\n')
-        trace_line = [l for l in lines if 'TRACE_SCOPE()' in l][0]
+        trace_line = [l for l in lines if 'TRC_SCOPE()' in l][0]
         # Should have same indentation as function body (4 spaces)
-        self.assertTrue(trace_line.startswith('    TRACE_SCOPE()'))
+        self.assertTrue(trace_line.startswith('    TRC_SCOPE()'))
     
     def test_skip_already_instrumented(self):
         """Test that already instrumented functions are skipped."""
         code = """void foo() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     int x = 1;
 }"""
         result = add_trace_scopes(code)
-        # Should only have one TRACE_SCOPE
-        self.assertEqual(result.count('TRACE_SCOPE()'), 1)
+        # Should only have one TRC_SCOPE
+        self.assertEqual(result.count('TRC_SCOPE()'), 1)
     
     def test_remove_trace_scope(self):
-        """Test removing TRACE_SCOPE() calls."""
+        """Test removing TRC_SCOPE() calls."""
         code = """void foo() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     int x = 1;
 }
 
 void bar() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     return;
 }"""
         result = remove_trace_scopes(code)
-        self.assertNotIn('TRACE_SCOPE()', result)
+        self.assertNotIn('TRC_SCOPE()', result)
         self.assertIn('void foo()', result)
         self.assertIn('void bar()', result)
         self.assertIn('int x = 1', result)
@@ -367,14 +367,14 @@ void bar() {
     def test_remove_preserves_other_code(self):
         """Test that remove doesn't affect other code."""
         code = """void foo() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     int x = 1;
     std::cout << "test";
 }"""
         result = remove_trace_scopes(code)
         self.assertIn('int x = 1', result)
         self.assertIn('std::cout', result)
-        self.assertNotIn('TRACE_SCOPE()', result)
+        self.assertNotIn('TRC_SCOPE()', result)
     
     def test_add_multiple_functions(self):
         """Test adding to multiple functions."""
@@ -392,8 +392,8 @@ int baz() {
 }
 """
         result = add_trace_scopes(code)
-        # Should have 3 TRACE_SCOPE calls
-        self.assertEqual(result.count('TRACE_SCOPE()'), 3)
+        # Should have 3 TRC_SCOPE calls
+        self.assertEqual(result.count('TRC_SCOPE()'), 3)
     
     def test_roundtrip(self):
         """Test add then remove returns to original."""
@@ -402,7 +402,7 @@ int baz() {
 }"""
         added = add_trace_scopes(code)
         removed = remove_trace_scopes(added)
-        self.assertNotIn('TRACE_SCOPE()', removed)
+        self.assertNotIn('TRC_SCOPE()', removed)
         self.assertIn('int x = 1', removed)
     
     def test_nested_braces_in_function(self):
@@ -418,8 +418,8 @@ void complex_function() {
 }
 """
         result = add_trace_scopes(code)
-        # Should have exactly 1 TRACE_SCOPE (in the function)
-        self.assertEqual(result.count('TRACE_SCOPE()'), 1)
+        # Should have exactly 1 TRC_SCOPE (in the function)
+        self.assertEqual(result.count('TRC_SCOPE()'), 1)
 
 
 class TestEdgeCases(unittest.TestCase):
@@ -430,13 +430,13 @@ class TestEdgeCases(unittest.TestCase):
         code = """void empty() {
 }"""
         result = add_trace_scopes(code)
-        self.assertIn('TRACE_SCOPE()', result)
+        self.assertIn('TRC_SCOPE()', result)
     
     def test_one_liner_function(self):
         """Test one-line function."""
         code = """int get_value() { return 42; }"""
         result = add_trace_scopes(code)
-        self.assertIn('TRACE_SCOPE()', result)
+        self.assertIn('TRC_SCOPE()', result)
     
     def test_function_with_default_params(self):
         """Test function with default parameters."""
@@ -471,7 +471,7 @@ void documented_function() {
 }
 """
         result = add_trace_scopes(code)
-        self.assertIn('TRACE_SCOPE()', result)
+        self.assertIn('TRC_SCOPE()', result)
     
     def test_multiple_classes(self):
         """Test multiple classes with methods."""
@@ -491,7 +491,7 @@ public:
 };
 """
         result = add_trace_scopes(code)
-        self.assertEqual(result.count('TRACE_SCOPE()'), 2)
+        self.assertEqual(result.count('TRC_SCOPE()'), 2)
     
     def test_lambda_expression_not_instrumented(self):
         """Test that lambda expressions are not instrumented."""
@@ -504,9 +504,9 @@ void function_with_lambda() {
 }
 """
         result = add_trace_scopes(code)
-        # Should have exactly 1 TRACE_SCOPE (in function_with_lambda)
+        # Should have exactly 1 TRC_SCOPE (in function_with_lambda)
         # Lambda should not be instrumented
-        self.assertEqual(result.count('TRACE_SCOPE()'), 1)
+        self.assertEqual(result.count('TRC_SCOPE()'), 1)
     
     def test_no_functions_in_file(self):
         """Test file with no functions."""
@@ -516,8 +516,8 @@ int global_var = 42;
 #define MACRO_VALUE 100
 """
         result = add_trace_scopes(code)
-        # Should not add any TRACE_SCOPE
-        self.assertNotIn('TRACE_SCOPE()', result)
+        # Should not add any TRC_SCOPE
+        self.assertNotIn('TRC_SCOPE()', result)
     
     def test_real_world_example(self):
         """Test realistic C++ code."""
@@ -562,12 +562,12 @@ void standalone_function(int x) {
 }
 """
         result = add_trace_scopes(code)
-        # Should have 4 TRACE_SCOPE calls:
+        # Should have 4 TRC_SCOPE calls:
         # 1. DataProcessor() constructor
         # 2. process() method
         # 3. calculate_sum() method
         # 4. standalone_function()
-        self.assertEqual(result.count('TRACE_SCOPE()'), 4)
+        self.assertEqual(result.count('TRC_SCOPE()'), 4)
 
 
 def run_tests():

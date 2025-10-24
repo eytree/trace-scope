@@ -4,32 +4,32 @@
  * @brief Header-only function-scope tracing with per-thread ring buffers.
  *
  * Features:
- *  - TRACE_SCOPE(): records enter/exit with depth indentation and duration.
- *  - TRACE_MSG(fmt, ...): buffered message event at current depth (file:line).
+ *  - TRC_SCOPE(): records enter/exit with depth indentation and duration.
+ *  - TRC_MSG(fmt, ...): buffered message event at current depth (file:line).
  *  - Per-thread lock-free ring buffer; global flush to text.
  *  - dump_binary(path): compact binary dump + tools/trc_pretty.py pretty printer.
- *  - DLL-safe mode via TRACE_SETUP_DLL_SHARED() macro (shares state across DLLs).
+ *  - DLL-safe mode via TRC_SETUP_DLL_SHARED() macro (shares state across DLLs).
  *  - Configurable flush behavior: never, outermost-only (default), or every scope.
  *  - Auto-detecting shared memory mode with manual override options.
  *
  * Build-time defines:
- *   TRACE_ENABLED   (default 1)
- *   TRACE_RING_CAP  (default 4096)  // events per thread
- *   TRACE_MSG_CAP   (default 192)   // max message size
- *   TRACE_DEPTH_MAX (default 512)   // max nesting depth tracked for durations
+ *   TRC_ENABLED   (default 1)
+ *   TRC_RING_CAP  (default 4096)  // events per thread
+ *   TRC_MSG_CAP   (default 192)   // max message size
+ *   TRC_DEPTH_MAX (default 512)   // max nesting depth tracked for durations
  *
  * DLL Boundary Support:
  *   By default, this is a header-only library. Each DLL/executable gets its own
  *   copy of the trace state, which may not be desired.
  *
- *   RECOMMENDED: Simple one-line setup with TRACE_SETUP_DLL_SHARED() macro:
+ *   RECOMMENDED: Simple one-line setup with TRC_SETUP_DLL_SHARED() macro:
  *
  *   In your main() function:
  *   @code
  *   #include <trace-scope/trace_scope.hpp>
  *   
  *   int main() {
- *       TRACE_SETUP_DLL_SHARED();  // One line - automatic setup & cleanup!
+ *       TRC_SETUP_DLL_SHARED();  // One line - automatic setup & cleanup!
  *       trace::get_config().out = std::fopen("trace.log", "w");
  *       // ... your code, including DLL calls
  *       return 0;  // Automatic cleanup via RAII
@@ -98,41 +98,41 @@
 #endif
 
 // DLL export/import macros for shared state across DLL boundaries
-#ifndef TRACE_SCOPE_API
-      #define TRACE_SCOPE_API
+#ifndef TRC_SCOPE_API
+      #define TRC_SCOPE_API
 #endif
 
-#ifndef TRACE_ENABLED
-#define TRACE_ENABLED 1
+#ifndef TRC_ENABLED
+#define TRC_ENABLED 1
 #endif
 
-#ifndef TRACE_RING_CAP
-#define TRACE_RING_CAP 4096
+#ifndef TRC_RING_CAP
+#define TRC_RING_CAP 4096
 #endif
 
-#ifndef TRACE_MSG_CAP
-#define TRACE_MSG_CAP 192
+#ifndef TRC_MSG_CAP
+#define TRC_MSG_CAP 192
 #endif
 
-#ifndef TRACE_DEPTH_MAX
-#define TRACE_DEPTH_MAX 512
+#ifndef TRC_DEPTH_MAX
+#define TRC_DEPTH_MAX 512
 #endif
 
-#ifndef TRACE_DOUBLE_BUFFER
-#define TRACE_DOUBLE_BUFFER 0  // Default: disabled to save memory (~1.2MB per thread)
+#ifndef TRC_DOUBLE_BUFFER
+#define TRC_DOUBLE_BUFFER 0  // Default: disabled to save memory (~1.2MB per thread)
 #endif
 
-#if TRACE_DOUBLE_BUFFER
-#define TRACE_NUM_BUFFERS 2
+#if TRC_DOUBLE_BUFFER
+#define TRC_NUM_BUFFERS 2
 #else
-#define TRACE_NUM_BUFFERS 1
+#define TRC_NUM_BUFFERS 1
 #endif
 
 // Version information - keep in sync with VERSION file at project root
-#define TRACE_SCOPE_VERSION "0.10.0-alpha"
-#define TRACE_SCOPE_VERSION_MAJOR 0
-#define TRACE_SCOPE_VERSION_MINOR 10
-#define TRACE_SCOPE_VERSION_PATCH 0
+#define TRC_SCOPE_VERSION "0.11.0-alpha"
+#define TRC_SCOPE_VERSION_MAJOR 0
+#define TRC_SCOPE_VERSION_MINOR 11
+#define TRC_SCOPE_VERSION_PATCH 0
 
 namespace trace {
 
@@ -642,7 +642,7 @@ namespace dll_shared_state {
         
         if (!shm_handle.valid) {
             // Doesn't exist, we might be the first/main EXE
-            // This is OK - will be created by TRACE_SETUP_DLL_SHARED()
+            // This is OK - will be created by TRC_SETUP_DLL_SHARED()
             return nullptr;
         }
         
@@ -688,8 +688,8 @@ enum class EventType : uint8_t {
 /**
  * @brief A single trace event stored in the ring buffer.
  * 
- * Events are created for function entry/exit (via TRACE_SCOPE) and
- * for log messages (via TRACE_MSG).
+ * Events are created for function entry/exit (via TRC_SCOPE) and
+ * for log messages (via TRC_MSG).
  */
 struct Event {
     uint64_t    ts_ns;                  ///< Timestamp in nanoseconds (system clock, wall-clock time)
@@ -701,7 +701,7 @@ struct Event {
     uint8_t     color_offset;           ///< Thread color offset for colorize_depth mode
     EventType   type;                   ///< Event type (Enter/Exit/Msg)
     uint64_t    dur_ns;                 ///< Duration in nanoseconds (Exit only; 0 otherwise)
-    char        msg[TRACE_MSG_CAP + 1]; ///< Message text (Msg events only; empty otherwise)
+    char        msg[TRC_MSG_CAP + 1]; ///< Message text (Msg events only; empty otherwise)
     uint64_t    memory_rss = 0;          ///< RSS memory usage in bytes (when track_memory enabled)
 };
 
@@ -947,10 +947,10 @@ private:
  * - Double buffer: Two buffers alternate; write to one while flushing the other
  */
 struct Ring {
-    Event       buf[TRACE_NUM_BUFFERS][TRACE_RING_CAP];  ///< Circular buffer(s): [0] for single mode, [0]/[1] for double mode
-    uint32_t    head[TRACE_NUM_BUFFERS] = {0};            ///< Next write position per buffer
-    uint64_t    wraps[TRACE_NUM_BUFFERS] = {0};           ///< Number of buffer wraparounds per buffer
-#if TRACE_DOUBLE_BUFFER
+    Event       buf[TRC_NUM_BUFFERS][TRC_RING_CAP];  ///< Circular buffer(s): [0] for single mode, [0]/[1] for double mode
+    uint32_t    head[TRC_NUM_BUFFERS] = {0};            ///< Next write position per buffer
+    uint64_t    wraps[TRC_NUM_BUFFERS] = {0};           ///< Number of buffer wraparounds per buffer
+#if TRC_DOUBLE_BUFFER
     std::atomic<int> active_buf{0};                 ///< Active buffer index for double-buffering (0 or 1)
     std::mutex  flush_mtx;                          ///< Protects buffer swap during flush (double-buffer mode only)
 #endif
@@ -958,8 +958,8 @@ struct Ring {
     uint32_t    tid   = 0;                          ///< Thread ID (cached)
     uint8_t     color_offset = 0;                   ///< Thread-specific color offset (0-7) for visual distinction
     bool        registered = false;                 ///< Whether this ring is registered globally
-    uint64_t    start_stack[TRACE_DEPTH_MAX];       ///< Start timestamp per depth (for duration calculation)
-    const char* func_stack[TRACE_DEPTH_MAX];        ///< Function name per depth (for message context)
+    uint64_t    start_stack[TRC_DEPTH_MAX];       ///< Start timestamp per depth (for duration calculation)
+    const char* func_stack[TRC_DEPTH_MAX];        ///< Function name per depth (for message context)
     
     /**
      * @brief Constructor: Initialize thread-specific values.
@@ -993,12 +993,12 @@ struct Ring {
         
         // Check active buffer usage
         int buf_idx = 0;
-#if TRACE_DOUBLE_BUFFER
+#if TRC_DOUBLE_BUFFER
         if (get_config().use_double_buffering) {
             buf_idx = active_buf.load(std::memory_order_relaxed);
         }
 #endif
-        float usage = (float)head[buf_idx] / (float)TRACE_RING_CAP;
+        float usage = (float)head[buf_idx] / (float)TRC_RING_CAP;
         if (wraps[buf_idx] > 0) {
             usage = 1.0f;  // Already wrapped = 100% full
         }
@@ -1018,13 +1018,13 @@ struct Ring {
      * @param line Source line number
      */
     inline void write(EventType type, const char* func, const char* file, int line) {
-#if TRACE_ENABLED
+#if TRC_ENABLED
         // Apply filters - skip if filtered out, but still update depth
         if (!filter_utils::should_trace(func, file, depth)) {
             // Must still track depth to maintain correct nesting
             if (type == EventType::Enter) {
                 int d = depth;
-                if (d < TRACE_DEPTH_MAX) {
+                if (d < TRC_DEPTH_MAX) {
                     const auto now = std::chrono::system_clock::now().time_since_epoch();
                     uint64_t now_ns = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
                     start_stack[d] = now_ns;
@@ -1062,7 +1062,7 @@ struct Ring {
         if (type == EventType::Enter) {
             int d = depth;
             e.depth = d;
-            if (d < TRACE_DEPTH_MAX) {
+            if (d < TRC_DEPTH_MAX) {
                 start_stack[d] = now_ns;
                 func_stack[d] = func;  // Track function name for messages
             }
@@ -1071,7 +1071,7 @@ struct Ring {
             depth = std::max(0, depth - 1);
             int d = std::max(0, depth);
             e.depth = d;
-            if (d < TRACE_DEPTH_MAX) {
+            if (d < TRC_DEPTH_MAX) {
                 uint64_t start_ns = start_stack[d];
                 e.dur_ns = now_ns - start_ns;
             }
@@ -1083,7 +1083,7 @@ struct Ring {
         if (get_config().mode == TracingMode::Hybrid) {
             // Write to ring buffer first (single or double-buffer mode)
             int buf_idx = 0;
-#if TRACE_DOUBLE_BUFFER
+#if TRC_DOUBLE_BUFFER
             if (get_config().use_double_buffering) {
                 buf_idx = active_buf.load(std::memory_order_relaxed);
             }
@@ -1091,14 +1091,14 @@ struct Ring {
             if (get_config().use_double_buffering) {
                 static bool warned = false;
                 if (!warned) {
-                    std::fprintf(stderr, "trace-scope: ERROR: use_double_buffering=true but not compiled with TRACE_DOUBLE_BUFFER=1\n");
-                    std::fprintf(stderr, "trace-scope: Recompile with -DTRACE_DOUBLE_BUFFER=1 or add before include\n");
+                    std::fprintf(stderr, "trace-scope: ERROR: use_double_buffering=true but not compiled with TRC_DOUBLE_BUFFER=1\n");
+                    std::fprintf(stderr, "trace-scope: Recompile with -DTRC_DOUBLE_BUFFER=1 or add before include\n");
                     warned = true;
                 }
             }
 #endif
             buf[buf_idx][head[buf_idx]] = e;
-            head[buf_idx] = (head[buf_idx] + 1) % TRACE_RING_CAP;
+            head[buf_idx] = (head[buf_idx] + 1) % TRC_RING_CAP;
             if (head[buf_idx] == 0) {
                 ++wraps[buf_idx];
             }
@@ -1160,13 +1160,13 @@ struct Ring {
         // Buffered mode: write to ring buffer only (single or double-buffer mode)
         else {
             int buf_idx = 0;
-#if TRACE_DOUBLE_BUFFER
+#if TRC_DOUBLE_BUFFER
             if (get_config().use_double_buffering) {
                 buf_idx = active_buf.load(std::memory_order_relaxed);
             }
 #endif
             buf[buf_idx][head[buf_idx]] = e;
-            head[buf_idx] = (head[buf_idx] + 1) % TRACE_RING_CAP;
+            head[buf_idx] = (head[buf_idx] + 1) % TRC_RING_CAP;
             if (head[buf_idx] == 0) {
                 ++wraps[buf_idx];
             }
@@ -1190,7 +1190,7 @@ struct Ring {
         // Get current function name from the stack (depth is at current scope)
         const char* current_func = nullptr;
         int d = depth > 0 ? depth - 1 : 0;
-        if (d < TRACE_DEPTH_MAX) {
+        if (d < TRC_DEPTH_MAX) {
             current_func = func_stack[d];
         }
         
@@ -1217,24 +1217,24 @@ struct Ring {
                 e.msg[0] = 0;
             }
             else {
-                int n = std::vsnprintf(e.msg, TRACE_MSG_CAP, fmt, ap);
+                int n = std::vsnprintf(e.msg, TRC_MSG_CAP, fmt, ap);
                 if (n < 0) {
                     e.msg[0] = 0;
                 }
                 else {
-                    e.msg[std::min(n, TRACE_MSG_CAP)] = 0;
+                    e.msg[std::min(n, TRC_MSG_CAP)] = 0;
                 }
             }
             
             // Write to buffer
             int buf_idx = 0;
-#if TRACE_DOUBLE_BUFFER
+#if TRC_DOUBLE_BUFFER
             if (get_config().use_double_buffering) {
                 buf_idx = active_buf.load(std::memory_order_relaxed);
             }
 #endif
             buf[buf_idx][head[buf_idx]] = e;
-            head[buf_idx] = (head[buf_idx] + 1) % TRACE_RING_CAP;
+            head[buf_idx] = (head[buf_idx] + 1) % TRC_RING_CAP;
             if (head[buf_idx] == 0) {
                 ++wraps[buf_idx];
             }
@@ -1268,12 +1268,12 @@ struct Ring {
                 e.msg[0] = 0;
             }
             else {
-                int n = std::vsnprintf(e.msg, TRACE_MSG_CAP, fmt, ap);
+                int n = std::vsnprintf(e.msg, TRC_MSG_CAP, fmt, ap);
                 if (n < 0) {
                     e.msg[0] = 0;
                 }
                 else {
-                    e.msg[std::min(n, TRACE_MSG_CAP)] = 0;
+                    e.msg[std::min(n, TRC_MSG_CAP)] = 0;
                 }
             }
             
@@ -1284,24 +1284,24 @@ struct Ring {
         else {
             write(EventType::Msg, current_func, file, line);
             int buf_idx = 0;
-#if TRACE_DOUBLE_BUFFER
+#if TRC_DOUBLE_BUFFER
             if (get_config().use_double_buffering) {
                 buf_idx = active_buf.load(std::memory_order_relaxed);
             }
 #endif
-            Event& e = buf[buf_idx][(head[buf_idx] + TRACE_RING_CAP - 1) % TRACE_RING_CAP];
+            Event& e = buf[buf_idx][(head[buf_idx] + TRC_RING_CAP - 1) % TRC_RING_CAP];
             
             if (!fmt) {
                 e.msg[0] = 0;
                 return;
             }
             
-            int n = std::vsnprintf(e.msg, TRACE_MSG_CAP, fmt, ap);
+            int n = std::vsnprintf(e.msg, TRC_MSG_CAP, fmt, ap);
             if (n < 0) {
                 e.msg[0] = 0;
             }
             else {
-                e.msg[std::min(n, TRACE_MSG_CAP)] = 0;
+                e.msg[std::min(n, TRC_MSG_CAP)] = 0;
             }
         }
     }
@@ -1431,7 +1431,7 @@ inline void set_external_state(Config* cfg, Registry* reg) {
 }
 
 /**
- * @def TRACE_SETUP_DLL_SHARED()
+ * @def TRC_SETUP_DLL_SHARED()
  * @brief One-line DLL state sharing setup with automatic cleanup (RAII).
  * 
  * Creates shared Config and Registry instances, automatically registers them
@@ -1453,13 +1453,13 @@ inline void set_external_state(Config* cfg, Registry* reg) {
  * #include <trace-scope/trace_scope.hpp>
  * 
  * int main() {
- *     TRACE_SETUP_DLL_SHARED();  // One line - automatic setup & cleanup!
+ *     TRC_SETUP_DLL_SHARED();  // One line - automatic setup & cleanup!
  *     
  *     // Configure tracing
  *     trace::config.out = std::fopen("trace.log", "w");
  *     
  *     // Use tracing normally across all DLLs
- *     TRACE_SCOPE();
+ *     TRC_SCOPE();
  *     call_dll_functions();  // All DLLs share same trace state and Ring buffers
  *     
  *     return 0;  // Automatic flush on exit via RAII
@@ -1475,7 +1475,7 @@ inline void set_external_state(Config* cfg, Registry* reg) {
  * 
  * Note: For advanced control, you can still use set_external_state() manually.
  */
-#define TRACE_SETUP_DLL_SHARED_WITH_CONFIG(config_file) \
+#define TRC_SETUP_DLL_SHARED_WITH_CONFIG(config_file) \
     static trace::Config g_trace_shared_config; \
     static trace::Registry g_trace_shared_registry; \
     static trace::shared_memory::SharedMemoryHandle g_shm_handle; \
@@ -1516,12 +1516,12 @@ inline void set_external_state(Config* cfg, Registry* reg) {
     } g_trace_dll_guard
 
 /**
- * @def TRACE_SETUP_DLL_SHARED()
+ * @def TRC_SETUP_DLL_SHARED()
  * @brief DLL state sharing setup without config file (backward compatible).
  * 
- * Same as TRACE_SETUP_DLL_SHARED_WITH_CONFIG(nullptr).
+ * Same as TRC_SETUP_DLL_SHARED_WITH_CONFIG(nullptr).
  */
-#define TRACE_SETUP_DLL_SHARED() TRACE_SETUP_DLL_SHARED_WITH_CONFIG(nullptr)
+#define TRC_SETUP_DLL_SHARED() TRC_SETUP_DLL_SHARED_WITH_CONFIG(nullptr)
 
 /**
  * @brief Get the active config instance.
@@ -1755,7 +1755,7 @@ inline bool Config::load_from_file(const char* path) {
  * Example:
  * @code
  * trace::load_config("trace.conf");
- * TRACE_SCOPE();  // Now configured from file
+ * TRC_SCOPE();  // Now configured from file
  * @endcode
  */
 inline bool load_config(const char* path) {
@@ -2152,7 +2152,7 @@ inline void print_event(const Event& e, FILE* out) {
  * 
  * Prints all events in the ring buffer (handling wraparound). Thread-safe
  * via static mutex. If the ring has wrapped, only the most recent
- * TRACE_RING_CAP events are printed.
+ * TRC_RING_CAP events are printed.
  * 
  * In double-buffering mode: atomically swaps buffers, flushes the old buffer,
  * then clears it for reuse. This allows writes to continue to the new active
@@ -2169,7 +2169,7 @@ inline void flush_ring(Ring& r) {
     uint32_t start = 0;
     
     // Double-buffering mode: swap buffers atomically
-#if TRACE_DOUBLE_BUFFER
+#if TRC_DOUBLE_BUFFER
     if (get_config().use_double_buffering) {
         std::lock_guard<std::mutex> flush_lock(r.flush_mtx);
         
@@ -2180,14 +2180,14 @@ inline void flush_ring(Ring& r) {
         
         // Now flush the old buffer (no one is writing to it)
         flush_buf_idx = old_buf;
-        count = (r.wraps[flush_buf_idx] == 0) ? r.head[flush_buf_idx] : TRACE_RING_CAP;
+        count = (r.wraps[flush_buf_idx] == 0) ? r.head[flush_buf_idx] : TRC_RING_CAP;
         start = (r.wraps[flush_buf_idx] == 0) ? 0 : r.head[flush_buf_idx];
         
         // Print events from the flushed buffer
         {
             std::lock_guard<std::mutex> io_lock(io_mtx);
             for (uint32_t i = 0; i < count; ++i) {
-                uint32_t idx = (start + i) % TRACE_RING_CAP;
+                uint32_t idx = (start + i) % TRC_RING_CAP;
                 const Event& e = r.buf[flush_buf_idx][idx];
                 print_event(e, out);
             }
@@ -2205,11 +2205,11 @@ inline void flush_ring(Ring& r) {
         std::lock_guard<std::mutex> io_lock(io_mtx);
         
         flush_buf_idx = 0;
-        count = (r.wraps[flush_buf_idx] == 0) ? r.head[flush_buf_idx] : TRACE_RING_CAP;
+        count = (r.wraps[flush_buf_idx] == 0) ? r.head[flush_buf_idx] : TRC_RING_CAP;
         start = (r.wraps[flush_buf_idx] == 0) ? 0 : r.head[flush_buf_idx];
         
         for (uint32_t i = 0; i < count; ++i) {
-            uint32_t idx = (start + i) % TRACE_RING_CAP;
+            uint32_t idx = (start + i) % TRC_RING_CAP;
             const Event& e = r.buf[flush_buf_idx][idx];
             print_event(e, out);
         }
@@ -2261,7 +2261,7 @@ inline void flush_current_thread() {
  * 
  * @example
  *   trace::config.mode = TracingMode::Immediate;
- *   TRACE_SCOPE();
+ *   TRC_SCOPE();
  *   critical_operation();
  *   trace::flush_immediate_queue();  // Ensure events written before proceeding
  */
@@ -2281,7 +2281,7 @@ inline void flush_immediate_queue() {
  *   FILE* custom_out = fopen("immediate.log", "w");
  *   trace::start_async_immediate(custom_out);
  *   trace::config.mode = TracingMode::Immediate;
- *   TRACE_SCOPE();  // Uses custom_out
+ *   TRC_SCOPE();  // Uses custom_out
  */
 inline void start_async_immediate(FILE* out = nullptr) {
     if (!out) out = get_config().out ? get_config().out : stdout;
@@ -2496,19 +2496,19 @@ inline std::string dump_binary(const char* prefix = nullptr) {
         if (!r || !r->registered) continue;
         
         // Determine which buffer(s) to dump
-        int num_buffers = TRACE_NUM_BUFFERS;
-#if TRACE_DOUBLE_BUFFER
+        int num_buffers = TRC_NUM_BUFFERS;
+#if TRC_DOUBLE_BUFFER
         if (!get_config().use_double_buffering) {
             num_buffers = 1;  // Only dump first buffer if not using double-buffering
         }
 #endif
         
         for (int buf_idx = 0; buf_idx < num_buffers; ++buf_idx) {
-            uint32_t count = (r->wraps[buf_idx] == 0) ? r->head[buf_idx] : TRACE_RING_CAP;
+            uint32_t count = (r->wraps[buf_idx] == 0) ? r->head[buf_idx] : TRC_RING_CAP;
             uint32_t start = (r->wraps[buf_idx] == 0) ? 0 : r->head[buf_idx];
 
             for (uint32_t i = 0; i < count; ++i) {
-                uint32_t idx = (start + i) % TRACE_RING_CAP;
+                uint32_t idx = (start + i) % TRC_RING_CAP;
                 const Event& e = r->buf[buf_idx][idx];
 
                 w8((uint8_t)e.type);
@@ -2543,7 +2543,7 @@ inline std::string dump_binary(const char* prefix = nullptr) {
  * The destructor calculates duration and optionally triggers auto-flush
  * when returning to depth 0.
  * 
- * Use via the TRACE_SCOPE() macro, not directly.
+ * Use via the TRC_SCOPE() macro, not directly.
  */
 struct Scope {
     const char* func;  ///< Function name
@@ -2557,7 +2557,7 @@ struct Scope {
      * @param li Source line
      */
     inline Scope(const char* f, const char* fi, int li) : func(f), file(fi), line(li) {
-#if TRACE_ENABLED
+#if TRC_ENABLED
         thread_ring().write(EventType::Enter, func, file, line);
 #endif
     }
@@ -2568,7 +2568,7 @@ struct Scope {
      * controlled by the flush_mode configuration setting.
      */
     inline ~Scope() {
-#if TRACE_ENABLED
+#if TRC_ENABLED
         Ring& r = thread_ring();
         r.write(EventType::Exit, func, file, line);
         
@@ -2588,7 +2588,7 @@ struct Scope {
  * Creates a message event with printf-style formatting. The message is
  * associated with the current function (from the function stack).
  * 
- * Use via the TRACE_MSG() macro, not directly.
+ * Use via the TRC_MSG() macro, not directly.
  * 
  * @param file Source file path
  * @param line Source line number
@@ -2596,7 +2596,7 @@ struct Scope {
  * @param ... Variable arguments for format string
  */
 inline void trace_msgf(const char* file, int line, const char* fmt, ...) {
-#if TRACE_ENABLED
+#if TRC_ENABLED
     Ring& r = thread_ring();
     va_list ap;
     va_start(ap, fmt);
@@ -2606,14 +2606,14 @@ inline void trace_msgf(const char* file, int line, const char* fmt, ...) {
 }
 
 /**
- * @brief Internal function for TRACE_ARG macro - with value.
+ * @brief Internal function for TRC_ARG macro - with value.
  * 
  * Logs a function argument with its name, type, and value.
  * The value is formatted using operator<<.
  */
 template<typename T>
 inline void trace_arg(const char* file, int line, const char* name, const char* type_name, const T& value) {
-#if TRACE_ENABLED
+#if TRC_ENABLED
     std::ostringstream oss;
     oss << name << ": " << type_name << " = " << value;
     trace_msgf(file, line, "%s", oss.str().c_str());
@@ -2621,13 +2621,13 @@ inline void trace_arg(const char* file, int line, const char* name, const char* 
 }
 
 /**
- * @brief Internal function for TRACE_ARG macro - without value (type only).
+ * @brief Internal function for TRC_ARG macro - without value (type only).
  * 
  * Logs a function argument with its name and type, but no value.
  * Used for non-printable types like custom classes.
  */
 inline void trace_arg(const char* file, int line, const char* name, const char* type_name) {
-#if TRACE_ENABLED
+#if TRC_ENABLED
     std::ostringstream oss;
     oss << name << ": " << type_name;
     trace_msgf(file, line, "%s", oss.str().c_str());
@@ -2641,7 +2641,7 @@ inline void trace_arg(const char* file, int line, const char* name, const char* 
  * a trace message in the destructor. Provides a drop-in replacement
  * for stream-based logging macros.
  * 
- * Use via the TRACE_LOG macro, not directly.
+ * Use via the TRC_LOG macro, not directly.
  */
 struct TraceStream {
     std::ostringstream ss;  ///< Stream buffer for collecting output
@@ -2659,7 +2659,7 @@ struct TraceStream {
      * @brief Destructor writes the collected stream to trace output.
      */
     ~TraceStream() {
-#if TRACE_ENABLED
+#if TRC_ENABLED
         trace_msgf(file, line, "%s", ss.str().c_str());
 #endif
     }
@@ -2745,19 +2745,19 @@ inline std::vector<ThreadStats> compute_stats() {
         uint64_t thread_peak = 0;
         
         // Process all buffers for this ring
-        int num_buffers = TRACE_NUM_BUFFERS;
-#if TRACE_DOUBLE_BUFFER
+        int num_buffers = TRC_NUM_BUFFERS;
+#if TRC_DOUBLE_BUFFER
         if (!get_config().use_double_buffering) {
             num_buffers = 1;  // Only process first buffer if not using double-buffering
         }
 #endif
         
         for (int buf_idx = 0; buf_idx < num_buffers; ++buf_idx) {
-            uint32_t count = (r->wraps[buf_idx] == 0) ? r->head[buf_idx] : TRACE_RING_CAP;
+            uint32_t count = (r->wraps[buf_idx] == 0) ? r->head[buf_idx] : TRC_RING_CAP;
             uint32_t start = (r->wraps[buf_idx] == 0) ? 0 : r->head[buf_idx];
             
             for (uint32_t i = 0; i < count; ++i) {
-                uint32_t idx = (start + i) % TRACE_RING_CAP;
+                uint32_t idx = (start + i) % TRC_RING_CAP;
                 const Event& e = r->buf[buf_idx][idx];
                 
                 // Track peak RSS for this thread
@@ -2947,7 +2947,7 @@ inline void ensure_stats_registered() {
 } // namespace trace
 
 /**
- * @def TRACE_SCOPE()
+ * @def TRC_SCOPE()
  * @brief Trace the current function scope.
  * 
  * Creates an RAII scope guard that logs function entry immediately and
@@ -2957,15 +2957,15 @@ inline void ensure_stats_registered() {
  * Example:
  * @code
  * void my_function() {
- *     TRACE_SCOPE();  // Logs entry and exit automatically
+ *     TRC_SCOPE();  // Logs entry and exit automatically
  *     // ... function body ...
  * }
  * @endcode
  */
-#define TRACE_SCOPE() ::trace::Scope _trace_scope_obj(__func__, __FILE__, __LINE__)
+#define TRC_SCOPE() ::trace::Scope _trace_scope_obj(__func__, __FILE__, __LINE__)
 
 /**
- * @def TRACE_MSG(fmt, ...)
+ * @def TRC_MSG(fmt, ...)
  * @brief Log a formatted message within the current scope.
  * 
  * Uses printf-style format strings. The message is associated with the
@@ -2973,16 +2973,16 @@ inline void ensure_stats_registered() {
  * 
  * Example:
  * @code
- * TRACE_MSG("Processing item %d of %d", current, total);
+ * TRC_MSG("Processing item %d of %d", current, total);
  * @endcode
  * 
  * @param fmt Printf-style format string
  * @param ... Variable arguments for format string
  */
-#define TRACE_MSG(...) ::trace::trace_msgf(__FILE__, __LINE__, __VA_ARGS__)
+#define TRC_MSG(...) ::trace::trace_msgf(__FILE__, __LINE__, __VA_ARGS__)
 
 /**
- * @def TRACE_LOG
+ * @def TRC_LOG
  * @brief Stream-based logging within the current scope.
  * 
  * Provides C++ iostream-style logging using operator<<. Drop-in replacement
@@ -2993,16 +2993,16 @@ inline void ensure_stats_registered() {
  * @code
  * int id = 42;
  * std::string name = "test";
- * TRACE_LOG << "Processing item " << id << ", name=" << name;
+ * TRC_LOG << "Processing item " << id << ", name=" << name;
  * 
  * // Drop-in replacement for:
  * // KY_COUT("Processing item " << id << ", name=" << name);
  * @endcode
  */
-#define TRACE_LOG ::trace::TraceStream(__FILE__, __LINE__)
+#define TRC_LOG ::trace::TraceStream(__FILE__, __LINE__)
 
 /**
- * @brief Helper function to format containers for TRACE_ARG.
+ * @brief Helper function to format containers for TRC_ARG.
  * 
  * Formats container contents as a single-line string with up to max_elem elements,
  * followed by "..." if more elements exist. Output format: [elem1, elem2, elem3, ...]
@@ -3031,8 +3031,8 @@ inline std::string format_container(const Container& c, size_t max_elem = 5) {
 }
 
 /**
- * @def TRACE_CONTAINER(container, max_elements)
- * @brief Helper macro to format containers for TRACE_ARG.
+ * @def TRC_CONTAINER(container, max_elements)
+ * @brief Helper macro to format containers for TRC_ARG.
  * 
  * Shows up to max_elements from the container, then "..." if more exist.
  * Single-line output: [elem1, elem2, elem3, ...]
@@ -3040,17 +3040,17 @@ inline std::string format_container(const Container& c, size_t max_elem = 5) {
  * Example:
  * @code
  * std::vector<int> values = {1, 2, 3, 4, 5, 6, 7};
- * TRACE_ARG("values", std::vector<int>, TRACE_CONTAINER(values, 5));
+ * TRC_ARG("values", std::vector<int>, TRC_CONTAINER(values, 5));
  * // Output: values: std::vector<int> = [1, 2, 3, 4, 5, ...]
  * @endcode
  * 
  * @param container The container to format
  * @param max_elements Maximum number of elements to display
  */
-#define TRACE_CONTAINER(container, max_elements) ::trace::format_container(container, max_elements)
+#define TRC_CONTAINER(container, max_elements) ::trace::format_container(container, max_elements)
 
 /**
- * @def TRACE_ARG(name, type, ...)
+ * @def TRC_ARG(name, type, ...)
  * @brief Log a function argument with its name, type, and optionally its value.
  * 
  * Used to automatically log function parameters. Can be used with or without
@@ -3060,10 +3060,10 @@ inline std::string format_container(const Container& c, size_t max_elem = 5) {
  * Example:
  * @code
  * void process(int id, const std::vector<int>& values, MyClass& obj) {
- *     TRACE_SCOPE();
- *     TRACE_ARG("id", int, id);  // Printable type with value
- *     TRACE_ARG("values", std::vector<int>, TRACE_CONTAINER(values, 5));  // Container
- *     TRACE_ARG("obj", MyClass);  // Non-printable type, no value
+ *     TRC_SCOPE();
+ *     TRC_ARG("id", int, id);  // Printable type with value
+ *     TRC_ARG("values", std::vector<int>, TRC_CONTAINER(values, 5));  // Container
+ *     TRC_ARG("obj", MyClass);  // Non-printable type, no value
  * }
  * @endcode
  * 
@@ -3071,4 +3071,4 @@ inline std::string format_container(const Container& c, size_t max_elem = 5) {
  * @param type Type of the parameter
  * @param ... Optional value or formatted value (for printable types)
  */
-#define TRACE_ARG(...) ::trace::trace_arg(__FILE__, __LINE__, __VA_ARGS__)
+#define TRC_ARG(...) ::trace::trace_arg(__FILE__, __LINE__, __VA_ARGS__)

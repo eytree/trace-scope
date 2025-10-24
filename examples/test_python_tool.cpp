@@ -7,29 +7,29 @@
 #include <thread>
 
 void test_function() {
-    TRACE_SCOPE();
-    TRACE_MSG("Test function called");
+    TRC_SCOPE();
+    TRC_MSG("Test function called");
 }
 
 void core_process() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     test_function();
 }
 
 void debug_helper() {
-    TRACE_SCOPE();
-    TRACE_MSG("Debug helper");
+    TRC_SCOPE();
+    TRC_MSG("Debug helper");
 }
 
 void worker_thread(int id) {
-    TRACE_SCOPE();
-    TRACE_MSG("Worker %d", id);
+    TRC_SCOPE();
+    TRC_MSG("Worker %d", id);
     core_process();
 }
 
 int main() {
     // Generate some traces
-    TRACE_SCOPE();
+    TRC_SCOPE();
     
     core_process();
     test_function();

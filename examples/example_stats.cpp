@@ -14,7 +14,7 @@
  */
 
 void fast_function() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     // Simulates fast operation - just some CPU work
     volatile int sum = 0;
     for (int i = 0; i < 1000; ++i) {
@@ -23,7 +23,7 @@ void fast_function() {
 }
 
 void slow_function() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     // Simulates slower operation with memory allocation
     std::vector<int> buffer(10000);
     for (size_t i = 0; i < buffer.size(); ++i) {
@@ -34,7 +34,7 @@ void slow_function() {
 }
 
 void memory_intensive_function() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     // Allocate significant memory to show memory tracking
     std::vector<std::vector<int>> big_arrays;
     for (int i = 0; i < 10; ++i) {
@@ -48,8 +48,8 @@ void memory_intensive_function() {
 }
 
 void worker_thread(int id) {
-    TRACE_SCOPE();
-    TRACE_MSG("Worker %d starting", id);
+    TRC_SCOPE();
+    TRC_MSG("Worker %d starting", id);
     
     // Mix of fast and slow operations
     for (int i = 0; i < 50; ++i) {
@@ -62,7 +62,7 @@ void worker_thread(int id) {
         }
     }
     
-    TRACE_MSG("Worker %d completed", id);
+    TRC_MSG("Worker %d completed", id);
 }
 
 int main() {
@@ -89,8 +89,8 @@ int main() {
     // Ensure stats are registered for automatic exit
     trace::internal::ensure_stats_registered();
     
-    TRACE_SCOPE();
-    TRACE_MSG("Main thread initializing workers");
+    TRC_SCOPE();
+    TRC_MSG("Main thread initializing workers");
     
     // Create multiple worker threads with different workloads
     std::vector<std::thread> threads;
@@ -114,7 +114,7 @@ int main() {
         t.join();
     }
     
-    TRACE_MSG("All workers completed");
+    TRC_MSG("All workers completed");
     
     // Dump binary trace for Python analysis
     std::string filename = trace::dump_binary("performance");

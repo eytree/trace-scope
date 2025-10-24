@@ -3,13 +3,13 @@
 Automatic instrumentation tool for trace_scope.
 
 Usage:
-    python trc_instrument.py add <file.cpp>      # Add TRACE_SCOPE() to all functions
-    python trc_instrument.py remove <file.cpp>   # Remove all TRACE_SCOPE() calls
+    python trc_instrument.py add <file.cpp>      # Add TRC_SCOPE() to all functions
+    python trc_instrument.py remove <file.cpp>   # Remove all TRC_SCOPE() calls
     python trc_instrument.py add --dry-run <file.cpp>  # Preview changes without modifying
     python trc_instrument.py --help              # Show help
     
 This tool uses regex-based parsing to find function definitions and automatically 
-insert or remove TRACE_SCOPE() macros.
+insert or remove TRC_SCOPE() macros.
 
 Notes:
 - Creates backup files (.bak) before modifying (unless --dry-run)
@@ -56,7 +56,7 @@ def is_control_flow_statement(text_before: str, potential_name: str) -> bool:
     
     return False
 
-# Printable types for TRACE_ARG value display
+# Printable types for TRC_ARG value display
 PRINTABLE_TYPES = {
     'int', 'long', 'short', 'char', 'bool',
     'unsigned', 'signed', 'size_t', 
@@ -163,24 +163,24 @@ def is_printable_container(param_type: str) -> Tuple[bool, str]:
 
 def generate_trace_arg(param_name: str, param_type: str, indent: str) -> str:
     """
-    Generate appropriate TRACE_ARG() line for a parameter.
+    Generate appropriate TRC_ARG() line for a parameter.
     
-    Returns formatted TRACE_ARG line with proper indentation.
+    Returns formatted TRC_ARG line with proper indentation.
     """
     # Check if it's a printable container
     is_container, elem_type = is_printable_container(param_type)
     if is_container:
-        # Use TRACE_CONTAINER helper
-        return f'{indent}TRACE_ARG("{param_name}", {param_type}, TRACE_CONTAINER({param_name}, 5));'
+        # Use TRC_CONTAINER helper
+        return f'{indent}TRC_ARG("{param_name}", {param_type}, TRC_CONTAINER({param_name}, 5));'
     
     # Check if it's a simple printable type
     elif is_printable_type(param_type):
         # Include value
-        return f'{indent}TRACE_ARG("{param_name}", {param_type}, {param_name});'
+        return f'{indent}TRC_ARG("{param_name}", {param_type}, {param_name});'
     
     else:
         # Non-printable type, no value
-        return f'{indent}TRACE_ARG("{param_name}", {param_type});'
+        return f'{indent}TRC_ARG("{param_name}", {param_type});'
 
 def find_function_bodies(content: str, verbose: bool = False) -> List[Tuple[int, int, str, str]]:
     """
@@ -281,11 +281,11 @@ def find_function_bodies(content: str, verbose: bool = False) -> List[Tuple[int,
 
 def add_instrumentation(content: str, add_args: bool = True, verbose: bool = False) -> str:
     """
-    Add TRACE_SCOPE() and optionally TRACE_ARG() to all function bodies.
+    Add TRC_SCOPE() and optionally TRC_ARG() to all function bodies.
     
     Args:
         content: Source code content
-        add_args: If True, add TRACE_ARG() for parameters (default)
+        add_args: If True, add TRC_ARG() for parameters (default)
         verbose: Show detailed processing info
     """
     functions = find_function_bodies(content, verbose)
@@ -304,12 +304,12 @@ def add_instrumentation(content: str, add_args: bool = True, verbose: bool = Fal
         # Find the position right after the opening brace
         insert_pos = brace_pos + 1
         
-        # Check if TRACE_SCOPE already exists in this function
+        # Check if TRC_SCOPE already exists in this function
         after_brace = result[insert_pos:insert_pos+300]
         lines_after = [l.strip() for l in after_brace.split('\n')[0:5] if l.strip()]
-        if lines_after and 'TRACE_SCOPE()' in lines_after[0]:
+        if lines_after and 'TRC_SCOPE()' in lines_after[0]:
             if verbose:
-                print(f"  Skipping {func_name} (already has TRACE_SCOPE)")
+                print(f"  Skipping {func_name} (already has TRC_SCOPE)")
             skipped_count += 1
             continue
         
@@ -321,10 +321,10 @@ def add_instrumentation(content: str, add_args: bool = True, verbose: bool = Fal
         else:
             indent = '    '
         
-        # Build insertion string: TRACE_SCOPE() and optionally TRACE_ARG()
-        insertions = [f"{indent}TRACE_SCOPE();"]
+        # Build insertion string: TRC_SCOPE() and optionally TRC_ARG()
+        insertions = [f"{indent}TRC_SCOPE();"]
         
-        # Add TRACE_ARG() for parameters if requested
+        # Add TRC_ARG() for parameters if requested
         if add_args:
             params = parse_function_parameters(full_signature)
             for param_name, param_type in params:
@@ -338,27 +338,27 @@ def add_instrumentation(content: str, add_args: bool = True, verbose: bool = Fal
         added_scope_count += 1
         
         if add_args and params:
-            print(f"  Added TRACE_SCOPE() and {len(params)} TRACE_ARG() to {func_name}")
+            print(f"  Added TRC_SCOPE() and {len(params)} TRC_ARG() to {func_name}")
         else:
-            print(f"  Added TRACE_SCOPE() to {func_name}")
+            print(f"  Added TRC_SCOPE() to {func_name}")
     
-    print(f"\nAdded {added_scope_count} TRACE_SCOPE() calls")
+    print(f"\nAdded {added_scope_count} TRC_SCOPE() calls")
     if add_args and added_args_count > 0:
-        print(f"Added {added_args_count} TRACE_ARG() calls")
+        print(f"Added {added_args_count} TRC_ARG() calls")
     if skipped_count > 0:
         print(f"Skipped {skipped_count} already instrumented functions")
     return result
 
 # Backward compatibility alias
 def add_trace_scopes(content: str, verbose: bool = False) -> str:
-    """Add TRACE_SCOPE() to all function bodies (no arguments)."""
+    """Add TRC_SCOPE() to all function bodies (no arguments)."""
     return add_instrumentation(content, add_args=False, verbose=verbose)
 
 def remove_trace_scopes(content: str, verbose: bool = False) -> str:
-    """Remove all TRACE_SCOPE() calls from the file."""
+    """Remove all TRC_SCOPE() calls from the file."""
     
-    # Pattern to match TRACE_SCOPE() with surrounding whitespace
-    pattern = r'^\s*TRACE_SCOPE\(\);\s*$'
+    # Pattern to match TRC_SCOPE() with surrounding whitespace
+    pattern = r'^\s*TRC_SCOPE\(\);\s*$'
     
     lines = content.split('\n')
     result_lines = []
@@ -372,15 +372,15 @@ def remove_trace_scopes(content: str, verbose: bool = False) -> str:
             continue  # Skip this line
         result_lines.append(line)
     
-    print(f"Removed {removed_count} TRACE_SCOPE() calls")
+    print(f"Removed {removed_count} TRC_SCOPE() calls")
     return '\n'.join(result_lines)
 
 def remove_trace_args(content: str, verbose: bool = False) -> str:
-    """Remove all TRACE_ARG() calls from the file."""
+    """Remove all TRC_ARG() calls from the file."""
     
-    # Pattern to match TRACE_ARG() with surrounding whitespace
-    # Matches: TRACE_ARG("name", type) or TRACE_ARG("name", type, value)
-    pattern = r'^\s*TRACE_ARG\([^)]+(?:\([^)]*\))?\);\s*$'
+    # Pattern to match TRC_ARG() with surrounding whitespace
+    # Matches: TRC_ARG("name", type) or TRC_ARG("name", type, value)
+    pattern = r'^\s*TRC_ARG\([^)]+(?:\([^)]*\))?\);\s*$'
     
     lines = content.split('\n')
     result_lines = []
@@ -394,11 +394,11 @@ def remove_trace_args(content: str, verbose: bool = False) -> str:
             continue  # Skip this line
         result_lines.append(line)
     
-    print(f"Removed {removed_count} TRACE_ARG() calls")
+    print(f"Removed {removed_count} TRC_ARG() calls")
     return '\n'.join(result_lines)
 
 def remove_trace_msgs(content: str, verbose: bool = False) -> str:
-    """Remove all TRACE_MSG() and TRACE_LOG calls from the file."""
+    """Remove all TRC_MSG() and TRC_LOG calls from the file."""
     
     lines = content.split('\n')
     result_lines = []
@@ -406,15 +406,15 @@ def remove_trace_msgs(content: str, verbose: bool = False) -> str:
     removed_log_count = 0
     
     for line in lines:
-        # Pattern for TRACE_MSG() - can span multiple arguments
-        if re.match(r'^\s*TRACE_MSG\(', line.strip()):
+        # Pattern for TRC_MSG() - can span multiple arguments
+        if re.match(r'^\s*TRC_MSG\(', line.strip()):
             removed_msg_count += 1
             if verbose:
                 print(f"  Removing: {line.strip()}")
             continue  # Skip this line
         
-        # Pattern for TRACE_LOG - stream-based logging
-        if re.match(r'^\s*TRACE_LOG\s*<<', line.strip()):
+        # Pattern for TRC_LOG - stream-based logging
+        if re.match(r'^\s*TRC_LOG\s*<<', line.strip()):
             removed_log_count += 1
             if verbose:
                 print(f"  Removing: {line.strip()}")
@@ -424,16 +424,16 @@ def remove_trace_msgs(content: str, verbose: bool = False) -> str:
     
     total_removed = removed_msg_count + removed_log_count
     if removed_msg_count > 0:
-        print(f"Removed {removed_msg_count} TRACE_MSG() calls")
+        print(f"Removed {removed_msg_count} TRC_MSG() calls")
     if removed_log_count > 0:
-        print(f"Removed {removed_log_count} TRACE_LOG calls")
+        print(f"Removed {removed_log_count} TRC_LOG calls")
     if total_removed == 0:
-        print("No TRACE_MSG() or TRACE_LOG calls found")
+        print("No TRC_MSG() or TRC_LOG calls found")
     
     return '\n'.join(result_lines)
 
 def remove_all_trace_calls(content: str, verbose: bool = False) -> str:
-    """Remove all trace-related calls: TRACE_SCOPE(), TRACE_ARG(), TRACE_MSG(), TRACE_LOG."""
+    """Remove all trace-related calls: TRC_SCOPE(), TRC_ARG(), TRC_MSG(), TRC_LOG."""
     content = remove_trace_scopes(content, verbose)
     content = remove_trace_args(content, verbose)
     content = remove_trace_msgs(content, verbose)
@@ -447,7 +447,7 @@ def process_file(filepath: str, action: str, no_args: bool = False, remove_all: 
     Args:
         filepath: Path to the C++ source file
         action: Action to perform ('add', 'remove', 'remove-args', 'remove-msgs')
-        no_args: For 'add': skip TRACE_ARG() generation
+        no_args: For 'add': skip TRC_ARG() generation
         remove_all: For 'remove': remove all trace calls (SCOPE, ARG, MSG)
         dry_run: Preview changes without modifying file
         verbose: Show detailed processing information
@@ -462,7 +462,7 @@ def process_file(filepath: str, action: str, no_args: bool = False, remove_all: 
     
     # Process based on action
     if action == 'add':
-        # By default add both TRACE_SCOPE() and TRACE_ARG()
+        # By default add both TRC_SCOPE() and TRC_ARG()
         result = add_instrumentation(original, add_args=not no_args, verbose=verbose)
     elif action == 'remove':
         if remove_all:
@@ -484,12 +484,12 @@ def process_file(filepath: str, action: str, no_args: bool = False, remove_all: 
     
     if dry_run:
         print(f"\n[DRY RUN] Would update: {filepath}")
-        scope_diff = result.count('TRACE_SCOPE()') - original.count('TRACE_SCOPE()')
-        arg_diff = result.count('TRACE_ARG(') - original.count('TRACE_ARG(')
+        scope_diff = result.count('TRC_SCOPE()') - original.count('TRC_SCOPE()')
+        arg_diff = result.count('TRC_ARG(') - original.count('TRC_ARG(')
         if scope_diff != 0:
-            print(f"[DRY RUN] TRACE_SCOPE() changes: {scope_diff:+d}")
+            print(f"[DRY RUN] TRC_SCOPE() changes: {scope_diff:+d}")
         if arg_diff != 0:
-            print(f"[DRY RUN] TRACE_ARG() changes: {arg_diff:+d}")
+            print(f"[DRY RUN] TRC_ARG() changes: {arg_diff:+d}")
         return True
     
     # Create backup
@@ -506,26 +506,26 @@ def process_file(filepath: str, action: str, no_args: bool = False, remove_all: 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Automatically add or remove trace instrumentation (TRACE_SCOPE, TRACE_ARG, TRACE_MSG) in C++ files',
+        description='Automatically add or remove trace instrumentation (TRC_SCOPE, TRC_ARG, TRC_MSG) in C++ files',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:
-  # Add TRACE_SCOPE() and TRACE_ARG() for all parameters (DEFAULT):
+  # Add TRC_SCOPE() and TRC_ARG() for all parameters (DEFAULT):
   python trc_instrument.py add myfile.cpp
   
-  # Add only TRACE_SCOPE() without arguments:
+  # Add only TRC_SCOPE() without arguments:
   python trc_instrument.py add --no-args myfile.cpp
   
-  # Remove TRACE_SCOPE() only:
+  # Remove TRC_SCOPE() only:
   python trc_instrument.py remove myfile.cpp
   
   # Remove all trace calls (SCOPE, ARG, MSG):
   python trc_instrument.py remove --all myfile.cpp
   
-  # Remove only TRACE_ARG() calls:
+  # Remove only TRC_ARG() calls:
   python trc_instrument.py remove-args myfile.cpp
   
-  # Remove only TRACE_MSG() and TRACE_LOG calls:
+  # Remove only TRC_MSG() and TRC_LOG calls:
   python trc_instrument.py remove-msgs myfile.cpp
   
   # Preview changes without modifying:
@@ -538,12 +538,12 @@ Examples:
   python trc_instrument.py add src/*.cpp
   
 Notes:
-  - Default 'add' now includes both TRACE_SCOPE() and TRACE_ARG()
-  - Use --no-args to add only TRACE_SCOPE() (old behavior)
+  - Default 'add' now includes both TRC_SCOPE() and TRC_ARG()
+  - Use --no-args to add only TRC_SCOPE() (old behavior)
   - Creates .bak backup files before modifying (unless --dry-run)
-  - Skips functions that already have TRACE_SCOPE()
+  - Skips functions that already have TRC_SCOPE()
   - Excludes control flow statements (for, if, while, switch, catch)
-  - Container arguments use TRACE_CONTAINER helper (max 5 elements)
+  - Container arguments use TRC_CONTAINER helper (max 5 elements)
   - Uses regex parsing (may need manual adjustment for complex code)
         '''
     )
@@ -553,7 +553,7 @@ Notes:
     parser.add_argument('files', nargs='+',
                        help='C++ source files to process')
     parser.add_argument('--no-args', action='store_true',
-                       help='For add: skip TRACE_ARG() and add only TRACE_SCOPE()')
+                       help='For add: skip TRC_ARG() and add only TRC_SCOPE()')
     parser.add_argument('--all', action='store_true',
                        help='For remove: remove all trace calls (SCOPE, ARG, MSG)')
     parser.add_argument('--dry-run', action='store_true',

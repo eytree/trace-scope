@@ -13,15 +13,15 @@
  * 
  * This allows zero disruption during flush operations.
  * 
- * REQUIRES: Compile with TRACE_DOUBLE_BUFFER=1
- * CMake: cmake -DTRACE_DOUBLE_BUFFER=ON ..
- * Or:    #define TRACE_DOUBLE_BUFFER 1 before including trace_scope.hpp
+ * REQUIRES: Compile with TRC_DOUBLE_BUFFER=1
+ * CMake: cmake -DTRC_DOUBLE_BUFFER=ON ..
+ * Or:    #define TRC_DOUBLE_BUFFER 1 before including trace_scope.hpp
  */
 
 #include <trace-scope/trace_scope.hpp>
 
-#if !TRACE_DOUBLE_BUFFER
-#error "This example requires TRACE_DOUBLE_BUFFER=1. Reconfigure cmake with -DTRACE_DOUBLE_BUFFER=ON"
+#if !TRC_DOUBLE_BUFFER
+#error "This example requires TRC_DOUBLE_BUFFER=1. Reconfigure cmake with -DTRC_DOUBLE_BUFFER=ON"
 #endif
 #include <thread>
 #include <chrono>
@@ -35,8 +35,8 @@ std::atomic<uint64_t> g_event_count{0};
  * @brief Fast function that generates many trace events.
  */
 void fast_function(int id) {
-    TRACE_SCOPE();
-    TRACE_MSG("Fast event %d", id);
+    TRC_SCOPE();
+    TRC_MSG("Fast event %d", id);
     ++g_event_count;
 }
 
@@ -44,8 +44,8 @@ void fast_function(int id) {
  * @brief Worker thread that generates high-frequency events.
  */
 void high_frequency_worker(int worker_id) {
-    TRACE_SCOPE();
-    TRACE_LOG << "Worker " << worker_id << " starting";
+    TRC_SCOPE();
+    TRC_LOG << "Worker " << worker_id << " starting";
     
     int event_id = 0;
     while (g_running.load(std::memory_order_relaxed)) {
@@ -56,15 +56,15 @@ void high_frequency_worker(int worker_id) {
         // std::this_thread::sleep_for(std::chrono::microseconds(10));
     }
     
-    TRACE_LOG << "Worker " << worker_id << " done, generated " << event_id << " events";
+    TRC_LOG << "Worker " << worker_id << " done, generated " << event_id << " events";
 }
 
 /**
  * @brief Flusher thread that periodically flushes all trace buffers.
  */
 void periodic_flusher() {
-    TRACE_SCOPE();
-    TRACE_LOG << "Flusher starting";
+    TRC_SCOPE();
+    TRC_LOG << "Flusher starting";
     
     int flush_count = 0;
     while (g_running.load(std::memory_order_relaxed)) {
@@ -77,7 +77,7 @@ void periodic_flusher() {
         ++flush_count;
     }
     
-    TRACE_LOG << "Flusher done, performed " << flush_count << " flushes";
+    TRC_LOG << "Flusher done, performed " << flush_count << " flushes";
 }
 
 /**
@@ -101,8 +101,8 @@ void run_stress_test(bool use_double_buffer, const char* output_file) {
     std::printf("  - Flush interval: 50ms\n");
     std::printf("  - Test duration: 2 seconds\n\n");
     
-    TRACE_SCOPE();
-    TRACE_LOG << "Starting stress test";
+    TRC_SCOPE();
+    TRC_LOG << "Starting stress test";
     
     auto start_time = std::chrono::steady_clock::now();
     
@@ -132,7 +132,7 @@ void run_stress_test(bool use_double_buffer, const char* output_file) {
     // Final flush
     trace::flush_all();
     
-    TRACE_LOG << "Stress test complete";
+    TRC_LOG << "Stress test complete";
     
     // Print statistics
     uint64_t total_events = g_event_count.load();

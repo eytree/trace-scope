@@ -14,22 +14,22 @@
 #include <chrono>
 
 void worker_function(int id) {
-    TRACE_SCOPE();
-    TRACE_MSG("Worker %d started", id);
+    TRC_SCOPE();
+    TRC_MSG("Worker %d started", id);
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    TRACE_MSG("Worker %d finished", id);
+    TRC_MSG("Worker %d finished", id);
 }
 
 void test_function() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     for (int i = 0; i < 3; ++i) {
-        TRACE_MSG("Iteration %d", i);
+        TRC_MSG("Iteration %d", i);
         worker_function(i);
     }
 }
 
 int main() {
-    std::printf("trace-scope v%s Test Example\n", TRACE_SCOPE_VERSION);
+    std::printf("trace-scope v%s Test Example\n", TRC_SCOPE_VERSION);
     std::printf("==========================================\n\n");
     
     // Test 1: Flat layout in "test_output" directory
@@ -39,7 +39,7 @@ int main() {
     trace::config.dump_prefix = "test";
     
     {
-        TRACE_SCOPE();
+        TRC_SCOPE();
         test_function();
     }
     trace::flush_all();
@@ -55,7 +55,7 @@ int main() {
     trace::config.output_layout = trace::Config::OutputLayout::ByDate;
     
     {
-        TRACE_SCOPE();
+        TRC_SCOPE();
         test_function();
     }
     trace::flush_all();
@@ -72,7 +72,7 @@ int main() {
     trace::config.current_session = 0;  // auto-increment
     
     {
-        TRACE_SCOPE();
+        TRC_SCOPE();
         test_function();
     }
     trace::flush_all();
@@ -82,7 +82,7 @@ int main() {
     
     // Test 4: Another session dump (should increment to session_002)
     {
-        TRACE_SCOPE();
+        TRC_SCOPE();
         worker_function(999);
     }
     trace::flush_all();

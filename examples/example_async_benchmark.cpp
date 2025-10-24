@@ -19,7 +19,7 @@ const int WARMUP_ITERATIONS = 1000;
 const int BENCH_ITERATIONS = 10000;
 
 void benchmark_function() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     // Empty function - just measure trace overhead
 }
 
@@ -103,7 +103,7 @@ double measure_overhead(trace::TracingMode mode, int num_threads = 1) {
 int main() {
     std::printf("=====================================================\n");
     std::printf("Async Immediate Mode Performance Benchmark\n");
-    std::printf("trace-scope v%s\n", TRACE_SCOPE_VERSION);
+    std::printf("trace-scope v%s\n", TRC_SCOPE_VERSION);
     std::printf("=====================================================\n\n");
     
     std::printf("Benchmark configuration:\n");

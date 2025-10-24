@@ -12,12 +12,12 @@
 // Various test functions to demonstrate filtering
 namespace core {
     void important_function() {
-        TRACE_SCOPE();
+        TRC_SCOPE();
         std::printf("  [core] important_function executing\n");
     }
     
     void process_data() {
-        TRACE_SCOPE();
+        TRC_SCOPE();
         std::printf("  [core] process_data executing\n");
         important_function();
     }
@@ -25,36 +25,36 @@ namespace core {
 
 namespace test {
     void test_basic() {
-        TRACE_SCOPE();
+        TRC_SCOPE();
         std::printf("  [test] test_basic executing\n");
     }
     
     void test_advanced() {
-        TRACE_SCOPE();
+        TRC_SCOPE();
         std::printf("  [test] test_advanced executing\n");
     }
 }
 
 namespace debug {
     void debug_helper() {
-        TRACE_SCOPE();
+        TRC_SCOPE();
         std::printf("  [debug] debug_helper executing\n");
     }
     
     void debug_print() {
-        TRACE_SCOPE();
+        TRC_SCOPE();
         std::printf("  [debug] debug_print executing\n");
     }
 }
 
 void unfiltered_function() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     std::printf("  [global] unfiltered_function executing\n");
 }
 
 // Deep recursion to demonstrate depth limiting
 void recursive_function(int n) {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     if (n > 0) {
         std::printf("  [recursion] depth %d\n", n);
         recursive_function(n - 1);

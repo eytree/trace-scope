@@ -12,42 +12,42 @@
 #include <cstdio>
 
 void level10() {
-    TRACE_SCOPE();
-    TRACE_LOG << "Depth 10 - Yellow-green transition";
+    TRC_SCOPE();
+    TRC_LOG << "Depth 10 - Yellow-green transition";
 }
 
 void level8() {
-    TRACE_SCOPE();
-    TRACE_LOG << "Depth 8 - Dark green";
+    TRC_SCOPE();
+    TRC_LOG << "Depth 8 - Dark green";
     level10();
 }
 
 void level5() {
-    TRACE_SCOPE();
-    TRACE_LOG << "Depth 5 - Mid green";
+    TRC_SCOPE();
+    TRC_LOG << "Depth 5 - Mid green";
     level8();
 }
 
 void level3() {
-    TRACE_SCOPE();
-    TRACE_LOG << "Depth 3 - Light-mid green";
+    TRC_SCOPE();
+    TRC_LOG << "Depth 3 - Light-mid green";
     level5();
 }
 
 void level2() {
-    TRACE_SCOPE();
-    TRACE_LOG << "Depth 2 - Light green";
+    TRC_SCOPE();
+    TRC_LOG << "Depth 2 - Light green";
     level3();
 }
 
 void level1() {
-    TRACE_SCOPE();
-    TRACE_LOG << "Depth 1 - Lightest green";
+    TRC_SCOPE();
+    TRC_LOG << "Depth 1 - Lightest green";
     level2();
 }
 
 int main() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     
     std::printf("=== ANSI Color-Coded Trace Output ===\n\n");
     std::printf("This example demonstrates depth-based colorization with a smooth gradient.\n");

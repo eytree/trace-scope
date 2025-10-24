@@ -4,6 +4,114 @@ This document tracks major features, design decisions, and implementation milest
 
 ---
 
+## October 24, 2025 - v0.11.0-alpha
+
+### Breaking Change: Rename All TRACE_* Macros to TRC_*
+**Version:** 0.11.0-alpha  
+**Breaking Change:** All TRACE_* macros renamed to TRC_* to avoid conflicts with common logging libraries
+
+**Problem:** 
+- `TRACE_SCOPE`, `TRACE_MSG`, `TRACE_LOG`, etc. are very common macro names
+- Conflicts with existing logging systems (Boost.Log, spdlog, custom logging frameworks)
+- Python instrumentation tools have difficulty finding the correct macros
+- Macro name collisions cause compilation errors in projects using multiple logging libraries
+
+**Solution:** Renamed all TRACE_* macros to TRC_* throughout the entire codebase:
+
+**Macro Renaming Map:**
+```cpp
+// User-facing macros
+TRACE_SCOPE()              → TRC_SCOPE()
+TRACE_MSG(...)             → TRC_MSG(...)
+TRACE_LOG                  → TRC_LOG
+TRACE_ARG(...)             → TRC_ARG(...)
+TRACE_CONTAINER(...)       → TRC_CONTAINER(...)
+TRACE_SETUP_DLL_SHARED()   → TRC_SETUP_DLL_SHARED()
+TRACE_SETUP_DLL_SHARED_WITH_CONFIG(...) → TRC_SETUP_DLL_SHARED_WITH_CONFIG(...)
+
+// Build configuration macros
+TRACE_ENABLED              → TRC_ENABLED
+TRACE_RING_CAP             → TRC_RING_CAP
+TRACE_MSG_CAP              → TRC_MSG_CAP
+TRACE_DEPTH_MAX            → TRC_DEPTH_MAX
+TRACE_DOUBLE_BUFFER        → TRC_DOUBLE_BUFFER
+TRACE_NUM_BUFFERS          → TRC_NUM_BUFFERS
+TRACE_SCOPE_VERSION        → TRC_SCOPE_VERSION
+TRACE_SCOPE_VERSION_MAJOR  → TRC_SCOPE_VERSION_MAJOR
+TRACE_SCOPE_VERSION_MINOR  → TRC_SCOPE_VERSION_MINOR
+TRACE_SCOPE_VERSION_PATCH  → TRC_SCOPE_VERSION_PATCH
+TRACE_SCOPE_API            → TRC_SCOPE_API
+```
+
+**Key Design Decisions:**
+- **Why TRC_*?** Short (3 chars), distinctive, matches Python tool names (`trc_analyze.py`, etc.)
+- **Why no backward compatibility?** Clean break prevents confusion, forces proper migration
+- **Why rename everything?** Consistent naming scheme, no mixed old/new macro names
+- **Why now?** Before 1.0 release, when breaking changes are still acceptable
+
+**Files Modified:**
+- **1 header file**: `include/trace-scope/trace_scope.hpp` (all macro definitions and documentation)
+- **18 example files**: All `examples/*.cpp` files updated
+- **11 test files**: All `tests/*.cpp` files updated  
+- **3 CMakeLists.txt files**: Updated build flags
+- **Documentation**: `README.md`, `HISTORY.md` updated
+- **Version**: Bumped to 0.11.0-alpha
+
+**Migration Guide:**
+```cpp
+// Old code (v0.10.0 and earlier)
+#include <trace-scope/trace_scope.hpp>
+TRACE_SCOPE();
+TRACE_MSG("Value: %d", x);
+TRACE_LOG << "Processing item " << id;
+TRACE_ARG("id", int, id);
+TRACE_CONTAINER(values, 5);
+TRACE_SETUP_DLL_SHARED();
+
+// New code (v0.11.0)
+#include <trace-scope/trace_scope.hpp>
+TRC_SCOPE();
+TRC_MSG("Value: %d", x);
+TRC_LOG << "Processing item " << id;
+TRC_ARG("id", int, id);
+TRC_CONTAINER(values, 5);
+TRC_SETUP_DLL_SHARED();
+
+// Build flags
+// Old: -DTRACE_ENABLED=1 -DTRACE_RING_CAP=8192
+// New: -DTRC_ENABLED=1 -DTRC_RING_CAP=8192
+```
+
+**Simple Find/Replace Patterns:**
+- Find: `TRACE_SCOPE(` → Replace: `TRC_SCOPE(`
+- Find: `TRACE_MSG(` → Replace: `TRC_MSG(`
+- Find: `TRACE_LOG` → Replace: `TRC_LOG`
+- Find: `TRACE_ARG(` → Replace: `TRC_ARG(`
+- Find: `TRACE_CONTAINER(` → Replace: `TRC_CONTAINER(`
+- Find: `TRACE_SETUP_DLL_SHARED` → Replace: `TRC_SETUP_DLL_SHARED`
+- Find: `-DTRACE_` → Replace: `-DTRC_`
+
+**Benefits:**
+- ✅ **No naming conflicts**: TRC_* prefix is unique and distinctive
+- ✅ **Python tool compatibility**: Matches existing `trc_*` tool naming
+- ✅ **Clean migration**: Simple find/replace patterns for all changes
+- ✅ **Future-proof**: No conflicts with common logging libraries
+- ✅ **Consistent branding**: Unified `trc-` namespace across C++ and Python
+
+**Breaking Changes:**
+- **All TRACE_* macros**: Renamed to TRC_* (no backward compatibility)
+- **Build flags**: All `-DTRACE_*` flags renamed to `-DTRC_*`
+- **Documentation**: All examples and docs use TRC_* macros
+- **Migration required**: All existing code must be updated
+
+**Testing:**
+- All examples compile and run with new macro names
+- All tests pass with TRC_* macros
+- Build system updated to use TRC_* flags
+- Documentation updated throughout
+
+---
+
 ## October 22, 2025 - v0.10.0-alpha
 
 ### Configurable Flush Behavior and Auto-Detecting Shared Memory

@@ -7,14 +7,14 @@
  * 2. Stress test: High-frequency concurrent writes with frequent flushes
  * 3. Correctness test: Verify no events lost during buffer swaps
  * 
- * REQUIRES: Compile with TRACE_DOUBLE_BUFFER=1
+ * REQUIRES: Compile with TRC_DOUBLE_BUFFER=1
  */
 
 #include <trace-scope/trace_scope.hpp>
 #include "test_framework.hpp"
 
-#if !TRACE_DOUBLE_BUFFER
-#error "This test requires TRACE_DOUBLE_BUFFER=1. Reconfigure cmake with -DTRACE_DOUBLE_BUFFER=ON"
+#if !TRC_DOUBLE_BUFFER
+#error "This test requires TRC_DOUBLE_BUFFER=1. Reconfigure cmake with -DTRC_DOUBLE_BUFFER=ON"
 #endif
 #include <thread>
 #include <chrono>
@@ -34,10 +34,10 @@ TEST(functional) {
     
     // Generate some events
     {
-        TRACE_SCOPE();
-        TRACE_LOG << "Event 1";
-        TRACE_MSG("Event %d", 2);
-        TRACE_LOG << "Event 3";
+        TRC_SCOPE();
+        TRC_LOG << "Event 1";
+        TRC_MSG("Event %d", 2);
+        TRC_LOG << "Event 3";
     }
     
     // Flush (should swap buffers)
@@ -45,9 +45,9 @@ TEST(functional) {
     
     // Generate more events in the new buffer
     {
-        TRACE_SCOPE();
-        TRACE_LOG << "Event 4";
-        TRACE_MSG("Event %d", 5);
+        TRC_SCOPE();
+        TRC_LOG << "Event 4";
+        TRC_MSG("Event %d", 5);
     }
     
     // Final flush
@@ -73,7 +73,7 @@ TEST(event_ordering) {
     
     // Generate sequential events
     for (int i = 0; i < 100; ++i) {
-        TRACE_MSG("Event %d", i);
+        TRC_MSG("Event %d", i);
         
         // Flush every 10 events to test buffer swapping
         if (i % 10 == 9) {
@@ -102,7 +102,7 @@ std::atomic<uint64_t> g_stress_events{0};
 void stress_worker(int worker_id) {
     int count = 0;
     while (g_stress_running.load(std::memory_order_relaxed)) {
-        TRACE_MSG("Worker %d event %d", worker_id, count);
+        TRC_MSG("Worker %d event %d", worker_id, count);
         ++count;
         ++g_stress_events;
         
@@ -198,7 +198,7 @@ TEST(single_thread_correctness) {
     const int FLUSH_INTERVAL = 50;
     
     for (int i = 0; i < NUM_EVENTS; ++i) {
-        TRACE_MSG("Event %d", i);
+        TRC_MSG("Event %d", i);
         
         if (i % FLUSH_INTERVAL == FLUSH_INTERVAL - 1) {
             trace::flush_all();
@@ -247,19 +247,19 @@ TEST(buffer_swap) {
     trace::config.out = std::fopen("test_double_buffer_swap.log", "w");
     
     // Write to buffer 0
-    TRACE_MSG("Before flush 1");
+    TRC_MSG("Before flush 1");
     
     // Flush - should swap to buffer 1
     trace::flush_all();
     
     // Write to buffer 1
-    TRACE_MSG("After flush 1");
+    TRC_MSG("After flush 1");
     
     // Flush - should swap back to buffer 0
     trace::flush_all();
     
     // Write to buffer 0 again
-    TRACE_MSG("After flush 2");
+    TRC_MSG("After flush 2");
     
     // Final flush
     trace::flush_all();

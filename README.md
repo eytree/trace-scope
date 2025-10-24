@@ -6,9 +6,9 @@ A lightweight, header-only C++ library for function-scope tracing with per-threa
 
 ## Features
 
-- **TRACE_SCOPE()**: Automatic enter/exit recording with depth indentation and duration
-- **TRACE_MSG(fmt, ...)**: Printf-style formatted message logging
-- **TRACE_LOG**: Stream-based logging (C++ iostream style, drop-in for stream macros)
+- **TRC_SCOPE()**: Automatic enter/exit recording with depth indentation and duration
+- **TRC_MSG(fmt, ...)**: Printf-style formatted message logging
+- **TRC_LOG**: Stream-based logging (C++ iostream style, drop-in for stream macros)
 - **Per-thread ring buffers**: Lock-free writes, thread-safe flushing
 - **Immediate mode**: Real-time output for long-running processes
 - **Binary dump**: Compact `.trc` format with organized directory structures
@@ -24,14 +24,14 @@ A lightweight, header-only C++ library for function-scope tracing with per-threa
 #include <trace_scope.hpp>
 
 void foo(int id, const std::string& name) {
-    TRACE_SCOPE();
-    TRACE_LOG << "Args: id=" << id << ", name=" << name;  // Stream-based
-    TRACE_MSG("Processing data for id=%d", id);  // Printf-style
+    TRC_SCOPE();
+    TRC_LOG << "Args: id=" << id << ", name=" << name;  // Stream-based
+    TRC_MSG("Processing data for id=%d", id);  // Printf-style
     // ... work ...
 }
 
 int main() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     foo(42, "test");
     trace::flush_all();
     return 0;
@@ -113,10 +113,10 @@ For extremely high-frequency tracing scenarios, double-buffering eliminates race
 
 ```bash
 # Configure cmake with double-buffering enabled
-cmake -DTRACE_DOUBLE_BUFFER=ON ..
+cmake -DTRC_DOUBLE_BUFFER=ON ..
 
 # Or define before including header
-#define TRACE_DOUBLE_BUFFER 1
+#define TRC_DOUBLE_BUFFER 1
 #include <trace-scope/trace_scope.hpp>
 ```
 
@@ -150,7 +150,7 @@ trace::config.use_double_buffering = true;  // Enable double-buffering
 **Example:**
 ```cpp
 // In CMakeLists.txt:
-// set(TRACE_DOUBLE_BUFFER ON)
+// set(TRC_DOUBLE_BUFFER ON)
 
 trace::config.use_double_buffering = true;
 
@@ -212,17 +212,17 @@ Each thread automatically gets a unique color offset based on its thread ID, mak
 **Example (Single-Threaded):**
 ```cpp
 void foo() {
-    TRACE_SCOPE();  // Depth 0 = Red
+    TRC_SCOPE();  // Depth 0 = Red
     bar();
 }
 
 void bar() {
-    TRACE_SCOPE();  // Depth 1 = Green
+    TRC_SCOPE();  // Depth 1 = Green
     baz();
 }
 
 void baz() {
-    TRACE_SCOPE();  // Depth 2 = Yellow
+    TRC_SCOPE();  // Depth 2 = Yellow
 }
 ```
 
@@ -261,7 +261,7 @@ int main() {
     trace::config.print_timestamp = true;
     
     // Use tracing as configured
-    TRACE_SCOPE();
+    TRC_SCOPE();
     // ...
 }
 ```
@@ -314,10 +314,10 @@ auto_flush_threshold = 0.9
 ```cpp
 int main() {
     // One line - DLL setup + config loading!
-    TRACE_SETUP_DLL_SHARED_WITH_CONFIG("trace.conf");
+    TRC_SETUP_DLL_SHARED_WITH_CONFIG("trace.conf");
     
     // Use tracing normally
-    TRACE_SCOPE();
+    TRC_SCOPE();
     // ...
 }
 ```
@@ -367,7 +367,7 @@ Immediate and Hybrid modes use async I/O for dramatically better performance:
 **How it works:**
 ```cpp
 trace::config.mode = trace::TracingMode::Immediate;
-TRACE_SCOPE();  // Non-blocking: event queued in <1µs
+TRC_SCOPE();  // Non-blocking: event queued in <1µs
 // Background thread writes events every 1ms
 ```
 
@@ -387,7 +387,7 @@ trace::flush_immediate_queue();  // Blocks until all events written
 
 // Example: Critical section
 {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     critical_operation();
     trace::flush_immediate_queue();  // Ensure events written before proceeding
 }
@@ -428,7 +428,7 @@ int main() {
     trace::filter_set_max_depth(15);
     
     // Use tracing - only matching functions/files traced
-    TRACE_SCOPE();
+    TRC_SCOPE();
 }
 ```
 
@@ -529,7 +529,7 @@ max_depth = 12
 
 ### Performance Notes
 
-- Filters checked once per TRACE_SCOPE() call
+- Filters checked once per TRC_SCOPE() call
 - Filtered events never written to ring buffer (saves memory)
 - Minimal overhead (string comparison only when tracing)
 - Typical use: < 10 patterns, negligible impact
@@ -559,7 +559,7 @@ int main() {
     trace::config.print_stats = true;      // Enable automatic stats at exit
     trace::config.track_memory = true;     // Optional: sample RSS memory (low overhead ~1-5µs)
     
-    TRACE_SCOPE();
+    TRC_SCOPE();
     
     // Your code here...
     
@@ -632,7 +632,7 @@ python tools/trc_analyze.py stats trace.trc --export-json stats.json
 Memory tracking is **optional** and disabled by default for zero overhead:
 
 ```cpp
-trace::config.track_memory = true;  // Sample RSS at each TRACE_SCOPE (low overhead ~1-5µs)
+trace::config.track_memory = true;  // Sample RSS at each TRC_SCOPE (low overhead ~1-5µs)
 ```
 
 **What it measures:**
@@ -643,7 +643,7 @@ trace::config.track_memory = true;  // Sample RSS at each TRACE_SCOPE (low overh
 
 **Performance Impact:**
 - **Disabled (default)**: Zero overhead
-- **Enabled**: ~1-5 microseconds per TRACE_SCOPE call
+- **Enabled**: ~1-5 microseconds per TRC_SCOPE call
 - System calls: `GetProcessMemoryInfo` (Windows), `/proc/self/status` (Linux), `task_info` (macOS)
 
 ### Configuration File
@@ -668,16 +668,16 @@ track_memory = true      # Sample RSS memory at each trace point
 
 See `examples/example_stats.cpp` for a complete demonstration with multi-threaded workloads and memory tracking.
 
-## Stream-Based Logging (TRACE_LOG)
+## Stream-Based Logging (TRC_LOG)
 
-For C++ iostream-style logging, use `TRACE_LOG`:
+For C++ iostream-style logging, use `TRC_LOG`:
 
 ```cpp
 void process(int id, const std::string& name) {
-    TRACE_SCOPE();
-    TRACE_LOG << "Args: id=" << id << ", name=" << name;
+    TRC_SCOPE();
+    TRC_LOG << "Args: id=" << id << ", name=" << name;
     
-    TRACE_LOG << "Processing item " << id;
+    TRC_LOG << "Processing item " << id;
     // work...
 }
 ```
@@ -688,15 +688,15 @@ Both styles work equally well - choose based on preference:
 
 ```cpp
 // Printf-style (traditional C)
-TRACE_MSG("Processing id=%d, name=%s", id, name.c_str());
+TRC_MSG("Processing id=%d, name=%s", id, name.c_str());
 
 // Stream-style (C++ iostream)
-TRACE_LOG << "Processing id=" << id << ", name=" << name;
+TRC_LOG << "Processing id=" << id << ", name=" << name;
 ```
 
 **When to use which:**
-- **TRACE_MSG**: When you have printf format strings, simple values
-- **TRACE_LOG**: When logging complex types, custom operator<<, drop-in for existing stream code
+- **TRC_MSG**: When you have printf format strings, simple values
+- **TRC_LOG**: When logging complex types, custom operator<<, drop-in for existing stream code
 
 ## DLL Boundary Support (Header-Only Solution)
 
@@ -704,7 +704,7 @@ TRACE_LOG << "Processing id=" << id << ", name=" << name;
 
 By default, trace_scope is header-only. When used across multiple DLLs, each DLL gets its own copy of the global state (config and registry). This means traces from different DLLs won't be combined.
 
-### Simple Solution: TRACE_SETUP_DLL_SHARED() Macro
+### Simple Solution: TRC_SETUP_DLL_SHARED() Macro
 
 **Just one line in your main executable:**
 
@@ -712,13 +712,13 @@ By default, trace_scope is header-only. When used across multiple DLLs, each DLL
 #include <trace-scope/trace_scope.hpp>
 
 int main() {
-    TRACE_SETUP_DLL_SHARED();  // That's it! Automatic setup & cleanup
+    TRC_SETUP_DLL_SHARED();  // That's it! Automatic setup & cleanup
     
     // Configure as needed (use get_config() to access shared config)
     trace::get_config().out = std::fopen("trace.log", "w");
     
     // Use tracing normally - all DLLs share the same state!
-    TRACE_SCOPE();
+    TRC_SCOPE();
     call_dll_functions();
     
     return 0;  // Automatic flush via RAII
@@ -730,10 +730,10 @@ int main() {
 ```cpp
 int main() {
     // Even simpler - DLL setup + config loading in one line!
-    TRACE_SETUP_DLL_SHARED_WITH_CONFIG("trace.conf");
+    TRC_SETUP_DLL_SHARED_WITH_CONFIG("trace.conf");
     
     // Use tracing normally - configured from file
-    TRACE_SCOPE();
+    TRC_SCOPE();
     call_dll_functions();
     
     return 0;  // Automatic flush via RAII
@@ -769,7 +769,7 @@ int main() {
 
 ### How It Works
 
-- `TRACE_SETUP_DLL_SHARED()` creates shared state instances with RAII guard
+- `TRC_SETUP_DLL_SHARED()` creates shared state instances with RAII guard
 - `set_external_state()` sets global pointers to your instances
 - All trace operations check these pointers first
 - Falls back to default instances if not set
@@ -780,7 +780,7 @@ int main() {
 If you have control over the build system and prefer compile-time linking:
 
 1. Include `src/trace_scope_impl.cpp` in ONE compilation unit
-2. Define `TRACE_SCOPE_SHARED` when compiling all files
+2. Define `TRC_SCOPE_SHARED` when compiling all files
 3. See `src/trace_scope_impl.cpp` for detailed instructions
 
 This approach requires modifying your build system but avoids the runtime setup call.
@@ -972,14 +972,14 @@ Per event: type(1) + tid(4) + ts_ns(8) + depth(4) + dur_ns(8) +
 
 ### Automatic Instrumentation Tool
 
-The `tools/trace_instrument.py` utility automatically adds or removes `TRACE_SCOPE()` macros from C++ files:
+The `tools/trace_instrument.py` utility automatically adds or removes `TRC_SCOPE()` macros from C++ files:
 
-**Add TRACE_SCOPE() to all functions:**
+**Add TRC_SCOPE() to all functions:**
 ```bash
 python tools/trace_instrument.py add myfile.cpp
 ```
 
-**Remove all TRACE_SCOPE() calls:**
+**Remove all TRC_SCOPE() calls:**
 ```bash
 python tools/trace_instrument.py remove myfile.cpp
 ```
@@ -993,7 +993,7 @@ python tools/trace_instrument.py add src/*.cpp
 - Automatically detects function definitions (free functions, methods, constructors)
 - Preserves correct indentation
 - Creates `.bak` backup files before modifying
-- Skips functions that already have TRACE_SCOPE()
+- Skips functions that already have TRC_SCOPE()
 - Handles namespaces, classes, and templates (most cases)
 
 **Example:**
@@ -1005,7 +1005,7 @@ void my_function(int x) {
 
 // After running: python tools/trace_instrument.py add file.cpp
 void my_function(int x) {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     std::cout << "Processing " << x << std::endl;
 }
 ```
@@ -1205,11 +1205,11 @@ python tools/trc_analyze.py diff trace_a.trc trace_b.trc \
 Control buffer sizes and features at compile time:
 
 ```cpp
-#define TRACE_ENABLED 1        // Enable/disable all tracing (default: 1)
-#define TRACE_RING_CAP 4096    // Events per thread (default: 4096)
-#define TRACE_MSG_CAP 192      // Max message size (default: 192)
-#define TRACE_DEPTH_MAX 512    // Max call depth tracked (default: 512)
-#define TRACE_DOUBLE_BUFFER 0  // Enable double-buffering (default: 0, saves ~1.2MB/thread)
+#define TRC_ENABLED 1        // Enable/disable all tracing (default: 1)
+#define TRC_RING_CAP 4096    // Events per thread (default: 4096)
+#define TRC_MSG_CAP 192      // Max message size (default: 192)
+#define TRC_DEPTH_MAX 512    // Max call depth tracked (default: 512)
+#define TRC_DOUBLE_BUFFER 0  // Enable double-buffering (default: 0, saves ~1.2MB/thread)
 
 #include <trace-scope/trace_scope.hpp>
 ```
@@ -1220,7 +1220,7 @@ cmake_minimum_required(VERSION 3.16)
 project(my_project)
 
 # Enable double-buffering if needed
-set(TRACE_DOUBLE_BUFFER ON)  # OFF by default to save memory
+set(TRC_DOUBLE_BUFFER ON)  # OFF by default to save memory
 
 add_subdirectory(trace-scope)
 target_link_libraries(my_app PRIVATE trace_scope)
@@ -1267,7 +1267,7 @@ See `tools/` directory:
 - See "Binary Dump Format" section for details
 
 **`trace_instrument.py`** - Automatic code instrumentation
-- Adds/removes TRACE_SCOPE() from C++ files
+- Adds/removes TRC_SCOPE() from C++ files
 - Usage: `python tools/trace_instrument.py add file.cpp`
 - Usage: `python tools/trace_instrument.py remove file.cpp`
 - Tests: `python tools/test_trace_instrument.py`
@@ -1351,7 +1351,7 @@ See LICENSE file.
 - Use **immediate mode** for real-time monitoring and debugging (still low overhead)
 - Use **hybrid mode** when you need both history and real-time output
 - Call `flush_immediate_queue()` before critical operations if using immediate/hybrid
-- Disable tracing in release builds (`#define TRACE_ENABLED 0`) if not needed
+- Disable tracing in release builds (`#define TRC_ENABLED 0`) if not needed
 
 ## Troubleshooting
 
@@ -1359,9 +1359,9 @@ See LICENSE file.
 
 **Missing main exit**: Enable `trace::config.auto_flush_at_exit = true`
 
-**Truncated output**: Increase `TRACE_RING_CAP` if ring buffer wraps
+**Truncated output**: Increase `TRC_RING_CAP` if ring buffer wraps
 
-**DLL not sharing state**: Ensure TRACE_SCOPE_SHARED defined for all compilation units
+**DLL not sharing state**: Ensure TRC_SCOPE_SHARED defined for all compilation units
 
 **Long delays on exit**: Disable `auto_flush_at_exit` and manually flush before returning
 
@@ -1453,8 +1453,8 @@ TEST(my_feature_test) {
     trace::config.out = std::fopen("my_test.log", "w");
     
     // Test your feature
-    TRACE_SCOPE();
-    TRACE_MSG("Testing feature");
+    TRC_SCOPE();
+    TRC_MSG("Testing feature");
     
     // Assertions
     TEST_ASSERT(some_condition, "Feature should work");
@@ -1588,7 +1588,7 @@ python tools/trc_analyze.py diff trace_a.trc trace_b.trc
 ```cpp
 trace::config.mode = trace::TracingMode::Immediate;
 trace::config.immediate_flush_interval_ms = 1;  // 1ms latency
-TRACE_SCOPE();  // Non-blocking, ~5µs overhead
+TRC_SCOPE();  // Non-blocking, ~5µs overhead
 trace::flush_immediate_queue();  // Force flush if needed
 ```
 
@@ -1607,7 +1607,7 @@ trace::flush_immediate_queue();  // Force flush if needed
 **IDE Integration & Extensions**
 - **VS Code Extension**
   - Syntax highlighting for trace macros
-  - Quick actions: "Add TRACE_SCOPE to function"
+  - Quick actions: "Add TRC_SCOPE to function"
   - View trace output in integrated terminal
   - Jump to function from trace output
   - Toggle tracing on/off per file
@@ -1617,10 +1617,10 @@ trace::flush_immediate_queue();  // Force flush if needed
   - Trace macro IntelliSense support
   - Diagnostics window integration
   - Performance profiler integration
-  - Automatic TRACE_SCOPE insertion code snippets
+  - Automatic TRC_SCOPE insertion code snippets
 
 - **JetBrains Plugin (CLion/ReSharper C++)**
-  - Live template for TRACE_SCOPE
+  - Live template for TRC_SCOPE
   - Intention action: "Instrument function"
   - Tool window for trace visualization
   - Code inspections for missing instrumentation
