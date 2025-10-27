@@ -1,0 +1,11 @@
+#ifndef _STORAGE_QUERY_DEPENDENT_VOLUME_LEV1_ENTRY_HPP
+#define _STORAGE_QUERY_DEPENDENT_VOLUME_LEV1_ENTRY_HPP
+
+/**
+ * @file _storage_query_dependent_volume_lev1_entry.hpp
+ * @brief _STORAGE_QUERY_DEPENDENT_VOLUME_LEV1_ENTRY struct definition
+ */
+
+
+
+#endif // _STORAGE_QUERY_DEPENDENT_VOLUME_LEV1_ENTRY_HPP

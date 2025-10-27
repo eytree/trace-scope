@@ -33,22 +33,26 @@ class HybridExtractor:
         (self.output_dir / "namespaces").mkdir(exist_ok=True)
     
     def extract_all(self):
-        """Extract all components with manual fixes"""
-        print(f"Hybrid extraction from {self.source_file} to {self.output_dir}")
+        """Extract all components with comprehensive AST-based extraction"""
+        print(f"Comprehensive AST extraction from {self.source_file} to {self.output_dir}")
         
         # Extract platform content
         self.extract_platform()
         
-        # Extract types with fixes
-        self.extract_enums_fixed()
-        self.extract_structs_fixed()
+        # Extract enums using AST
+        self.extract_enums_from_ast()
         
-        # Extract functions and variables
-        self.extract_functions_fixed()
-        self.extract_variables_fixed()
+        # Extract ALL structs using AST
+        self.extract_all_structs_from_original()
         
-        # Extract namespaces
-        self.extract_namespaces_fixed()
+        # Extract functions using AST
+        self.extract_functions_from_ast()
+        
+        # Extract variables using AST
+        self.extract_variables_from_ast()
+        
+        # Extract namespaces using AST
+        self.extract_namespaces_from_ast()
         
         # Extract macros
         self.extract_macros()
@@ -56,7 +60,73 @@ class HybridExtractor:
         # Generate modules.txt
         self.generate_modules_txt()
         
-        print("✓ Hybrid extraction complete!")
+        print("✓ Comprehensive AST extraction complete!")
+    
+    def extract_enums_from_ast(self):
+        """Extract enums using AST parser"""
+        print("Extracting enums using AST...")
+        
+        enums = self.parser.extract_enums(namespace="trace")
+        
+        if enums:
+            content = "namespace trace {\n\n"
+            for enum in enums:
+                content += enum['content'] + "\n\n"
+            content += "} // namespace trace"
+            
+            self._write_file("types/enums.hpp", self._wrap_header("enums.hpp", "Enum definitions", content))
+            print(f"  Extracted {len(enums)} enums")
+        else:
+            print("  No enums found in trace namespace")
+    
+    def extract_functions_from_ast(self):
+        """Extract functions using AST parser"""
+        print("Extracting functions using AST...")
+        
+        functions = self.parser.extract_functions(namespace="trace")
+        
+        if functions:
+            content = "namespace trace {\n\n"
+            for func in functions:
+                content += func['content'] + "\n\n"
+            content += "} // namespace trace"
+            
+            self._write_file("functions.hpp", self._wrap_header("functions.hpp", "Function implementations", content))
+            print(f"  Extracted {len(functions)} functions")
+        else:
+            print("  No functions found in trace namespace")
+    
+    def extract_variables_from_ast(self):
+        """Extract variables using AST parser"""
+        print("Extracting variables using AST...")
+        
+        variables = self.parser.extract_variables(namespace="trace")
+        
+        if variables:
+            content = "namespace trace {\n\n"
+            for var in variables:
+                content += var['content'] + "\n\n"
+            content += "} // namespace trace"
+            
+            self._write_file("variables.hpp", self._wrap_header("variables.hpp", "Global variable declarations", content))
+            print(f"  Extracted {len(variables)} variables")
+        else:
+            print("  No variables found in trace namespace")
+    
+    def extract_namespaces_from_ast(self):
+        """Extract namespaces using AST parser"""
+        print("Extracting namespaces using AST...")
+        
+        namespaces = self.parser.extract_namespaces()
+        
+        for name, content in namespaces.items():
+            if name == "trace":
+                continue  # Skip main namespace
+            
+            filename = f"{name}.hpp"
+            header_content = self._wrap_header(filename, f"namespace {name}", content)
+            self._write_file(f"namespaces/{filename}", header_content)
+            print(f"  Extracted namespace {name}")
     
     def extract_platform(self):
         """Extract platform includes and defines"""
@@ -82,6 +152,16 @@ class HybridExtractor:
                 defines.append(line)
             
             i += 1
+        
+        # Add missing standard library includes that are used but not explicitly included
+        additional_includes = {
+            '#include <queue>',
+            '#include <unordered_map>', 
+            '#include <condition_variable>',
+            '#include <memory>',
+            '#include <vector>'
+        }
+        includes.update(additional_includes)
         
         # Generate platform.hpp
         platform_content = self._generate_platform_header(includes, defines)
@@ -212,6 +292,28 @@ struct Ring {
         
         for filename, description, content in structs:
             self._write_file(f"types/{filename}", self._wrap_header(filename, description, content))
+    
+    def extract_all_structs_from_original(self):
+        """Extract ALL structs from original header using AST"""
+        print("Extracting all structs from original header...")
+        
+        # Use AST parser to get all structs
+        structs = self.parser.extract_structs(namespace="trace")
+        
+        for struct in structs:
+            filename = f"{struct['name'].lower()}.hpp"
+            content = self._wrap_header(filename, f"{struct['name']} struct definition", struct['content'])
+            self._write_file(f"types/{filename}", content)
+            print(f"  Extracted {struct['name']} -> types/{filename}")
+        
+        # Also extract any structs not in trace namespace
+        all_structs = self.parser.extract_structs()
+        for struct in all_structs:
+            if struct['name'] not in [s['name'] for s in structs]:
+                filename = f"{struct['name'].lower()}.hpp"
+                content = self._wrap_header(filename, f"{struct['name']} struct definition", struct['content'])
+                self._write_file(f"types/{filename}", content)
+                print(f"  Extracted {struct['name']} -> types/{filename}")
     
     def _get_async_queue_content(self):
         return '''namespace trace {

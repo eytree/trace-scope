@@ -1,0 +1,11 @@
+#ifndef _STORAGE_QUERY_DEPENDENT_VOLUME_RESPONSE_HPP
+#define _STORAGE_QUERY_DEPENDENT_VOLUME_RESPONSE_HPP
+
+/**
+ * @file _storage_query_dependent_volume_response.hpp
+ * @brief _STORAGE_QUERY_DEPENDENT_VOLUME_RESPONSE struct definition
+ */
+
+
+
+#endif // _STORAGE_QUERY_DEPENDENT_VOLUME_RESPONSE_HPP
