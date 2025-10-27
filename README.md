@@ -100,6 +100,37 @@ python tools/merge_header.py \
     --output include/trace-scope/trace_scope.hpp
 ```
 
+### AST-Based Modular Extraction (v0.14.1-alpha)
+
+**Version 0.14.1-alpha** introduces libclang-based AST parsing for accurate C++ code extraction and validation:
+
+**Core Tools:**
+- `tools/cpp_ast_parser.py`: Core AST parsing using libclang
+- `tools/extract_modular.py`: Extract modules from monolithic header using AST
+- `tools/ast_aware_merger.py`: Merge modules with AST validation
+- `tools/hybrid_extractor.py`: Hybrid approach combining AST with manual fixes
+
+**Technical Achievements:**
+- **Accurate Parsing:** libclang provides proper C++ AST understanding
+- **Dependency Analysis:** AST-based dependency resolution
+- **Conditional Compilation:** Proper handling of platform-specific code
+- **Validation:** AST validation ensures syntactically correct output
+- **Foundation:** Robust base for future modular improvements
+
+**Developer Workflow:**
+1. Edit `trace_scope_original.hpp` (master source)
+2. Extract modules: `python tools/extract_modular.py --input trace_scope_original.hpp --output trace_scope_modular`
+3. Apply fixes: `python tools/fix_modular_issues.py --modular-dir trace_scope_modular`
+4. Merge header: `python tools/merge_header.py --input trace_scope_modular --output trace_scope.hpp`
+5. Validate compilation
+
+**Challenges Addressed:**
+The libclang approach addresses fundamental challenges in modular C++ extraction:
+- Individual modules cannot be parsed in isolation due to dependencies
+- Regex-based parsing insufficient for complex C++ constructs
+- Conditional compilation blocks require careful handling
+- Namespace consolidation needs intelligent merging
+
 **Benefits:**
 - **Maintainability:** Each component in its own file (~200-500 lines)
 - **Organization:** Clear separation of concerns (types, functions, macros)

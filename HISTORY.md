@@ -6,6 +6,42 @@ This document tracks major features, design decisions, and implementation milest
 
 ## October 27, 2025 - v0.14.1-alpha
 
+### libclang-Based Modular Architecture
+**Version:** 0.14.1-alpha  
+**Enhancement:** Implemented libclang-based AST parsing for accurate C++ modular extraction
+
+**Major Achievement:** AST-Based C++ Parsing
+
+Implemented a comprehensive libclang-based modular header architecture that addresses fundamental challenges in C++ header modularization.
+
+**Core Tools Created:**
+- `tools/cpp_ast_parser.py`: Core AST parsing using libclang for accurate C++ understanding
+- `tools/extract_modular.py`: Extract modules from monolithic header using AST parsing
+- `tools/ast_aware_merger.py`: Merge modules with AST validation and dependency analysis
+- `tools/hybrid_extractor.py`: Hybrid approach combining AST parsing with manual fixes
+- `tools/fix_modular_issues.py`: Surgical fixes for specific compilation issues
+- `tools/final_fix.py`: Comprehensive compilation error resolution
+
+**AST Parser Features:**
+- Accurate C++ AST parsing using libclang
+- Extraction of namespaces, functions, structs, enums, variables, macros
+- Proper handling of conditional compilation blocks
+- Source text extraction with correct line/column positioning
+- Validation of parsed C++ code
+
+**Technical Insights:**
+- **Dependency Isolation:** Individual C++ modules cannot be parsed in isolation due to missing dependencies
+- **Regex Limitations:** Regex-based parsing insufficient for complex C++ constructs and nested structures
+- **Conditional Compilation:** Platform-specific includes and defines require careful handling
+- **Namespace Merging:** Multiple namespace blocks need intelligent consolidation
+- **Macro Dependencies:** Preprocessor macros require dependency-aware ordering
+
+**Solutions Implemented:**
+- **AST-Based Parsing:** libclang provides proper C++ language understanding
+- **Hybrid Approach:** Combine AST parsing with manual fixes for edge cases
+- **Validation:** AST validation ensures syntactically correct output
+- **Foundation:** Robust base for future modular improvements
+
 ### Modular Header Architecture
 **Version:** 0.14.1-alpha  
 **Enhancement:** Refactored monolithic header into modular source files for improved maintainability
