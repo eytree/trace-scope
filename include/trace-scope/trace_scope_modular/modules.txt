@@ -4,13 +4,13 @@
 
 platform.hpp
 types/enums.hpp
-types/Event.hpp
+types/event.hpp
 types/stats.hpp
-types/Config.hpp
-types/AsyncQueue.hpp
-types/Ring.hpp
-types/Registry.hpp
-types/Scope.hpp
+types/config.hpp
+types/async_queue.hpp
+types/ring.hpp
+types/registry.hpp
+types/scope.hpp
 variables.hpp
 functions.hpp
 macros.hpp
