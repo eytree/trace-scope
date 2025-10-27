@@ -6,41 +6,85 @@
  * @brief Platform-specific includes and build-time defines
  */
 
-#include <algorithm>
-#include <atomic>
-#include <chrono>
-#include <cstdarg>
+// Standard C++ includes
 #include <cstdint>
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <fcntl.h>
+#include <chrono>
+#include <mutex>
+#include <thread>
+#include <algorithm>
+#include <sstream>
+#include <map>
+#include <string>
+#include <atomic>
 #include <filesystem>
+#include <queue>
+#include <unordered_map>
+#include <condition_variable>
+#include <memory>
+#include <vector>
+
+// Platform-specific includes for memory sampling
+#ifdef _WIN32
+#include <windows.h>
+#include <psapi.h>
+// Undefine Windows macros that conflict with std::min/max
+#undef min
+#undef max
+#elif defined(__APPLE__)
 #include <mach/mach.h>
 #include <mach/task.h>
-#include <map>
-#include <mutex>
-#include <psapi.h>
-#include <sstream>
-#include <string>
+#endif
+
+// Platform-specific includes for shared memory
+#ifdef _WIN32
+// Windows shared memory functions are in windows.h (already included)
+#elif defined(__linux__) || defined(__APPLE__)
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <thread>
+#include <fcntl.h>
 #include <unistd.h>
-#include <windows.h>
+#endif
 
+// DLL export/import macros for shared state across DLL boundaries
+#ifndef TRC_SCOPE_API
+#define TRC_SCOPE_API
+#endif
+
+// Build-time configuration defines
+#ifndef TRC_ENABLED
+#define TRC_ENABLED 1
+#endif
+
+#ifndef TRC_RING_CAP
+#define TRC_RING_CAP 4096
+#endif
+
+#ifndef TRC_MSG_CAP
+#define TRC_MSG_CAP 192
+#endif
+
+#ifndef TRC_DEPTH_MAX
+#define TRC_DEPTH_MAX 512
+#endif
+
+#ifndef TRC_DOUBLE_BUFFER
+#define TRC_DOUBLE_BUFFER 0  // Default: disabled to save memory (~1.2MB per thread)
+#endif
+
+#if TRC_DOUBLE_BUFFER
 #define TRC_NUM_BUFFERS 2
+#else
 #define TRC_NUM_BUFFERS 1
+#endif
+
+// Version information - keep in sync with VERSION file at project root
 #define TRC_SCOPE_VERSION "0.14.0-alpha"
 #define TRC_SCOPE_VERSION_MAJOR 0
 #define TRC_SCOPE_VERSION_MINOR 14
 #define TRC_SCOPE_VERSION_PATCH 0
-#define TRC_SETUP_DLL_SHARED_WITH_CONFIG(config_file) \
-#define TRC_SETUP_DLL_SHARED() TRC_SETUP_DLL_SHARED_WITH_CONFIG(nullptr)
-#define TRC_SCOPE() ::trace::Scope _trace_scope_obj(__func__, __FILE__, __LINE__)
-#define TRC_MSG(...) ::trace::trace_msgf(__FILE__, __LINE__, __VA_ARGS__)
-#define TRC_LOG ::trace::TraceStream(__FILE__, __LINE__)
-#define TRC_CONTAINER(container, max_elements) ::trace::format_container(container, max_elements)
-#define TRC_ARG(...) ::trace::trace_arg(__FILE__, __LINE__, __VA_ARGS__)
 
 #endif // PLATFORM_HPP

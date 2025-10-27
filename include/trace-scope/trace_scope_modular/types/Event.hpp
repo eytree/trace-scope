@@ -12,7 +12,7 @@ struct Event {
     uint64_t timestamp;           ///< Timestamp in nanoseconds
     EventType type;               ///< Event type
     uint32_t depth;              ///< Call stack depth
-    const char* functiontion;        ///< Function name
+    const char* function;        ///< Function name
     const char* file;            ///< Source file
     uint32_t line;               ///< Source line
     char message[TRC_MSG_CAP];   ///< Message buffer
