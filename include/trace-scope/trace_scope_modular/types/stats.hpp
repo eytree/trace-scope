@@ -1,43 +1,29 @@
-#ifndef TRACE_SCOPE_STATS_HPP
-#define TRACE_SCOPE_STATS_HPP
+#ifndef STATS_HPP
+#define STATS_HPP
 
 /**
  * @file stats.hpp
- * @brief Performance statistics struct definitions
+ * @brief Stats struct definitions
  */
-
-#include <cstdint>
-#include <vector>
 
 namespace trace {
 
-/**
- * @brief Performance statistics for a single function.
- */
 struct FunctionStats {
-    const char* func_name;     ///< Function name
-    uint64_t    call_count;   ///< Number of times function was called
-    uint64_t    total_ns;     ///< Total execution time in nanoseconds
-    uint64_t    min_ns;       ///< Minimum execution time in nanoseconds
-    uint64_t    max_ns;       ///< Maximum execution time in nanoseconds
-    uint64_t    memory_delta; ///< Memory delta in bytes (peak - start RSS)
-    
-    double avg_ns() const { return call_count > 0 ? (double)total_ns / call_count : 0.0; }
+    std::string name;
+    uint64_t call_count = 0;
+    uint64_t total_time_ns = 0;
+    uint64_t min_time_ns = UINT64_MAX;
+    uint64_t max_time_ns = 0;
 };
 
-/**
- * @brief Per-thread performance statistics.
- */
 struct ThreadStats {
-    uint32_t tid;                                    ///< Thread ID
-    std::vector<FunctionStats> functions;            ///< Function statistics for this thread
-    uint64_t total_events;                          ///< Total events in this thread
-    uint64_t peak_rss;                              ///< Peak RSS memory usage for this thread
+    uint32_t thread_id = 0;
+    std::string thread_name;
+    uint64_t event_count = 0;
+    uint64_t total_time_ns = 0;
+    std::unordered_map<std::string, FunctionStats> functions;
 };
 
 } // namespace trace
 
-#endif // TRACE_SCOPE_STATS_HPP
-
-
-
+#endif // STATS_HPP

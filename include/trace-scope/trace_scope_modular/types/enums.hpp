@@ -1,66 +1,39 @@
-#ifndef TRACE_SCOPE_ENUMS_HPP
-#define TRACE_SCOPE_ENUMS_HPP
+#ifndef ENUMS_HPP
+#define ENUMS_HPP
 
 /**
  * @file enums.hpp
- * @brief All enum class definitions for trace-scope
+ * @brief Enum definitions
  */
 
 namespace trace {
 
-/**
- * @brief Tracing output mode.
- * 
- * Determines how trace events are captured and output:
- * - Buffered: Events stored in ring buffer, flushed manually (default, best performance)
- * - Immediate: Events printed immediately, no buffering (real-time, higher overhead)
- * - Hybrid: Events both buffered AND printed immediately (best of both worlds)
- */
-enum class TracingMode {
-    Buffered,   ///< Default: events buffered in ring buffer, manual flush required
-    Immediate,  ///< Real-time output: bypass ring buffer, print immediately
-    Hybrid      ///< Hybrid: buffer events AND print immediately for real-time + history
+enum class EventType : uint8_t {
+    Enter = 0,
+    Exit = 1,
+    Message = 2,
+    Marker = 3
 };
 
-/**
- * @brief Flush behavior modes for scope exit.
- */
-enum class FlushMode {
-    NEVER,           ///< No auto-flush on scope exit
-    OUTERMOST_ONLY,  ///< Flush only when depth returns to 0 (default)
-    EVERY_SCOPE      ///< Flush on every scope exit (high overhead)
+enum class TracingMode : uint8_t {
+    Disabled = 0,
+    Immediate = 1,
+    Buffered = 2,
+    Hybrid = 3
 };
 
-/**
- * @brief Shared memory usage modes.
- */
-enum class SharedMemoryMode {
-    AUTO,      ///< Auto-detect: use shared if DLL detected (default)
-    DISABLED,  ///< Never use shared memory (force thread_local)
-    ENABLED    ///< Always use shared memory
+enum class FlushMode : uint8_t {
+    Manual = 0,
+    Auto = 1,
+    Interval = 2
 };
 
-/**
- * @brief Output directory layout options
- */
-enum class OutputLayout {
-    Flat,      ///< All files in output_dir: output_dir/trace_*.trc
-    ByDate,    ///< Organized by date: output_dir/2025-10-20/trace_*.trc
-    BySession  ///< Organized by session: output_dir/session_001/trace_*.trc
-};
-
-/**
- * @brief Type of trace event
- */
-enum class EventType : uint8_t { 
-    Enter = 0,  ///< Function entry
-    Exit = 1,   ///< Function exit
-    Msg = 2     ///< Message/log event
+enum class SharedMemoryMode : uint8_t {
+    Disabled = 0,
+    Auto = 1,
+    Enabled = 2
 };
 
 } // namespace trace
 
-#endif // TRACE_SCOPE_ENUMS_HPP
-
-
-
+#endif // ENUMS_HPP

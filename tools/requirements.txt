@@ -34,3 +34,6 @@
 # render DOT files using the 'dot' command-line tool:
 #   dot -Tpng callgraph.dot -o callgraph.png
 
+# Required for modular header extraction and merging:
+libclang>=18.0  # For C++ AST parsing and validation
+
