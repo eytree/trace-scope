@@ -4,6 +4,70 @@ This document tracks major features, design decisions, and implementation milest
 
 ---
 
+## October 27, 2025 - v0.14.1-alpha
+
+### Modular Header Architecture
+**Version:** 0.14.1-alpha  
+**Enhancement:** Refactored monolithic header into modular source files for improved maintainability
+
+**Problem:**
+- Single 2000+ line header file difficult to maintain and navigate
+- Hard to isolate and test individual components
+- Complex interdependencies made refactoring error-prone
+- Difficult to understand code organization at a glance
+
+**Solution:** Implemented modular header architecture with automated merging:
+
+**Modular Structure:**
+- Split header into 12 logical modules organized by concern
+- `platform.hpp` - Platform detection, system includes, build defines
+- `types/` directory - 9 files for structs, classes, enums (Event, Config, Ring, Registry, Scope, etc.)
+- `variables.hpp` - Global variable declarations
+- `functions.hpp` - All function implementations (~800 lines)
+- `macros.hpp` - TRC_* macro definitions
+
+**Merge Tool (`tools/merge_header.py`):**
+- Intelligent C++ header parser that strips header guards
+- Consolidates all includes at the top of merged header
+- Preserves conditional compilation blocks (#ifdef, #ifndef, #if defined)
+- Creates single unified `namespace trace {}` block
+- Places macros outside namespace (as required)
+- Handles complex preprocessor dependencies and ordering
+- Validates proper structure and prevents duplicate definitions
+
+**Key Technical Achievements:**
+- Preserved 100% backward compatibility - users see no changes
+- All 12 comprehensive tests pass without modification
+- Zero runtime overhead - merged header is functionally identical
+- Maintained header-only library design
+- Cross-platform conditional compilation preserved correctly
+
+**Testing:**
+- Verified compilation on Windows with Clang
+- All examples run correctly (basic, colors, hybrid, filtering, etc.)
+- Comprehensive test suite passes (12/12 tests)
+- Binary trace format unchanged
+
+**Benefits:**
+- Each module is 200-500 lines (vs 2000+ line monolith)
+- Clear separation of concerns improves code navigation
+- Easier to add new features and refactor existing code
+- Better IDE support (faster parsing, better autocomplete)
+- Facilitates future enhancements (better linting, analysis tools)
+
+**Files Added:**
+- `include/trace-scope/trace_scope_modular/` (directory with 12 modular files)
+- `include/trace-scope/trace_scope_original.hpp` (backup of original)
+- `tools/merge_header.py` (header merge tool, ~400 lines Python)
+
+**Developer Workflow:**
+1. Edit modular sources in `trace_scope_modular/`
+2. Run merge tool: `python tools/merge_header.py --input include/trace-scope/trace_scope_modular --output include/trace-scope/trace_scope.hpp`
+3. Test compilation and functionality
+4. Commit both modular sources and generated header
+
+---
+
 ## October 24, 2025 - v0.14.0-alpha
 
 ### Code Quality and Tooling

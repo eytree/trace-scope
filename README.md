@@ -1,6 +1,6 @@
 # trace-scope
 
-**Version:** 0.9.0-alpha
+**Version:** 0.14.1-alpha
 
 A lightweight, header-only C++ library for function-scope tracing with per-thread ring buffers.
 
@@ -63,6 +63,53 @@ Key AI-assisted features implemented:
 - Binary format versioning with backward compatibility
 - Cross-platform memory sampling (Windows/Linux/macOS)
 - Multi-threaded ring buffer architecture with double-buffering option
+
+## Architecture
+
+### Modular Header Design
+
+**Version 0.14.1-alpha** introduces a modular header architecture for improved maintainability while preserving the header-only library benefits.
+
+**Structure:**
+```
+include/trace-scope/
+├── trace_scope.hpp              # Generated merged header (use this)
+├── trace_scope_original.hpp     # Backup of monolithic version
+└── trace_scope_modular/         # Modular source files
+    ├── platform.hpp             # Platform detection, includes, defines
+    ├── types/                   # Type definitions
+    │   ├── enums.hpp           # EventType, TracingMode, FlushMode, etc.
+    │   ├── Event.hpp           # Event struct
+    │   ├── stats.hpp           # FunctionStats, ThreadStats
+    │   ├── Config.hpp          # Configuration struct
+    │   ├── AsyncQueue.hpp      # Async queue for immediate mode
+    │   ├── Ring.hpp            # Ring buffer implementation
+    │   ├── Registry.hpp        # Thread registry
+    │   └── Scope.hpp           # RAII scope guard
+    ├── variables.hpp            # Global variable declarations
+    ├── functions.hpp            # Function implementations
+    ├── macros.hpp              # TRC_* macro definitions
+    └── modules.txt             # Merge order specification
+```
+
+**Build Process:**
+The `trace_scope.hpp` header is generated from modular sources using `tools/merge_header.py`:
+```bash
+python tools/merge_header.py \
+    --input include/trace-scope/trace_scope_modular \
+    --output include/trace-scope/trace_scope.hpp
+```
+
+**Benefits:**
+- **Maintainability:** Each component in its own file (~200-500 lines)
+- **Organization:** Clear separation of concerns (types, functions, macros)
+- **Testing:** Easier to isolate and test individual components
+- **Zero Runtime Cost:** Merged header is identical to monolithic version
+- **Backward Compatible:** Users still include a single header file
+
+**For Users:** No changes required - continue including `<trace-scope/trace_scope.hpp>` as before.
+
+**For Developers:** Modify modular sources in `trace_scope_modular/`, then regenerate the merged header.
 
 ## Configuration
 
