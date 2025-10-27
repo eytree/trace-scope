@@ -103,3 +103,5 @@ struct Registry {
 
 #endif // TRACE_SCOPE_REGISTRY_HPP
 
+
+

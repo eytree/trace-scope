@@ -62,3 +62,5 @@ enum class EventType : uint8_t {
 
 #endif // TRACE_SCOPE_ENUMS_HPP
 
+
+

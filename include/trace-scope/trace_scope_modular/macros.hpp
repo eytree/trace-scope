@@ -241,3 +241,5 @@ struct TraceStream {
 
 #endif // TRACE_SCOPE_MACROS_HPP
 
+
+

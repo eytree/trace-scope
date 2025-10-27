@@ -58,3 +58,5 @@ static bool stats_registered = false;
 
 #endif // TRACE_SCOPE_VARIABLES_HPP
 
+
+

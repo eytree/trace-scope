@@ -70,3 +70,5 @@ struct Scope {
 
 #endif // TRACE_SCOPE_SCOPE_HPP
 
+
+
