@@ -19,7 +19,7 @@
 
 // Fast function - stays the same in both versions
 void fast_function() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     volatile int x = 0;
     for (int i = 0; i < 100; ++i) {
         x += i;
@@ -28,7 +28,7 @@ void fast_function() {
 
 // Slow function - gets slower in "current" version
 void slow_function(bool is_regressed) {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     if (is_regressed) {
         // Regression: 2x slower
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -40,7 +40,7 @@ void slow_function(bool is_regressed) {
 
 // Memory function - uses more memory in "current" version
 void memory_function(bool is_regressed) {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     if (is_regressed) {
         // Regression: 2x more memory
         std::vector<int> big_vec(2 * 1024 * 1024);  // ~8MB
@@ -55,7 +55,7 @@ void memory_function(bool is_regressed) {
 
 // Improved function - gets faster in "current" version
 void improved_function(bool is_current) {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     if (is_current) {
         // Improvement: 50% faster
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -67,13 +67,13 @@ void improved_function(bool is_current) {
 
 // Function only in current version
 void new_function() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     std::this_thread::sleep_for(std::chrono::milliseconds(2));
 }
 
 // Function only in baseline version
 void removed_function() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     std::this_thread::sleep_for(std::chrono::milliseconds(3));
 }
 
@@ -107,7 +107,7 @@ int main(int argc, char* argv[]) {
     trace::config.out = nullptr;  // Don't print trace output
     trace::config.track_memory = true;  // Track memory for regression detection
     
-    TRACE_SCOPE();
+    TRC_SCOPE();
     
     // Run workload
     for (int i = 0; i < 5; ++i) {

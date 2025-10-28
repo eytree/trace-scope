@@ -9,14 +9,14 @@
 
 // Test 1: Multi-threaded tracing (thread safety)
 TEST(multi_threaded_trace) {
-    trace::config.out = std::fopen("test_multithread.log", "w");
+    trace::config.out = trace::safe_fopen("test_multithread.log", "w");
     trace::config.mode = trace::TracingMode::Buffered;
     
     auto worker = [](int id) {
-        TRACE_SCOPE();
-        TRACE_MSG("Worker %d starting", id);
+        TRC_SCOPE();
+        TRC_MSG("Worker %d starting", id);
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        TRACE_MSG("Worker %d done", id);
+        TRC_MSG("Worker %d done", id);
     };
     
     std::vector<std::thread> threads;
@@ -38,11 +38,11 @@ TEST(immediate_vs_buffered) {
     // Test immediate mode
     {
         trace::config.mode = trace::TracingMode::Immediate;
-        trace::config.out = std::fopen("test_immediate.log", "w");
+        trace::config.out = trace::safe_fopen("test_immediate.log", "w");
         
-        TRACE_SCOPE();
-        TRACE_MSG("Immediate mode message 1");
-        TRACE_MSG("Immediate mode message 2");
+        TRC_SCOPE();
+        TRC_MSG("Immediate mode message 1");
+        TRC_MSG("Immediate mode message 2");
         
         std::fclose(trace::config.out);
         trace::config.mode = trace::TracingMode::Buffered;
@@ -50,11 +50,11 @@ TEST(immediate_vs_buffered) {
     
     // Test buffered mode
     {
-        trace::config.out = std::fopen("test_buffered.log", "w");
+        trace::config.out = trace::safe_fopen("test_buffered.log", "w");
         
-        TRACE_SCOPE();
-        TRACE_MSG("Buffered mode message 1");
-        TRACE_MSG("Buffered mode message 2");
+        TRC_SCOPE();
+        TRC_MSG("Buffered mode message 1");
+        TRC_MSG("Buffered mode message 2");
         
         trace::flush_all();
         std::fclose(trace::config.out);
@@ -65,7 +65,7 @@ TEST(immediate_vs_buffered) {
 
 // Test 3: Config option combinations
 TEST(config_combinations) {
-    trace::config.out = std::fopen("test_config.log", "w");
+    trace::config.out = trace::safe_fopen("test_config.log", "w");
     
     // Test with all options off
     trace::config.print_timing = false;
@@ -75,8 +75,8 @@ TEST(config_combinations) {
     trace::config.include_function_name = false;
     
     {
-        TRACE_SCOPE();
-        TRACE_MSG("Minimal output");
+        TRC_SCOPE();
+        TRC_MSG("Minimal output");
     }
     
     // Test with all options on
@@ -87,8 +87,8 @@ TEST(config_combinations) {
     trace::config.include_function_name = true;
     
     {
-        TRACE_SCOPE();
-        TRACE_MSG("Full output");
+        TRC_SCOPE();
+        TRC_MSG("Full output");
     }
     
     // Reset to defaults
@@ -105,12 +105,12 @@ TEST(config_combinations) {
 
 // Test 4: Filename truncation with long paths
 TEST(long_filename_truncation) {
-    trace::config.out = std::fopen("test_filename_truncation.log", "w");
+    trace::config.out = trace::safe_fopen("test_filename_truncation.log", "w");
     trace::config.filename_width = 15;
     
     // Simulate long path by using current file's __FILE__ macro
-    TRACE_SCOPE();
-    TRACE_MSG("Testing filename truncation with very long path name");
+    TRC_SCOPE();
+    TRC_MSG("Testing filename truncation with very long path name");
     
     trace::config.filename_width = 20; // Reset
     trace::flush_all();
@@ -120,13 +120,13 @@ TEST(long_filename_truncation) {
 
 // Helper function with intentionally long name for testing
 static void this_is_an_intentionally_very_long_function_name_for_testing_truncation() {
-    TRACE_SCOPE();
-    TRACE_MSG("Long function name test");
+    TRC_SCOPE();
+    TRC_MSG("Long function name test");
 }
 
 // Test 5: Function name truncation
 TEST(long_function_truncation) {
-    trace::config.out = std::fopen("test_function_truncation.log", "w");
+    trace::config.out = trace::safe_fopen("test_function_truncation.log", "w");
     trace::config.function_width = 15;
     
     this_is_an_intentionally_very_long_function_name_for_testing_truncation();
@@ -139,15 +139,15 @@ TEST(long_function_truncation) {
 
 // Test 6: Deep nesting
 static void deeply_nested_call(int depth) {
-    TRACE_SCOPE();
-    TRACE_MSG("At depth %d", depth);
+    TRC_SCOPE();
+    TRC_MSG("At depth %d", depth);
     if (depth > 0) {
         deeply_nested_call(depth - 1);
     }
 }
 
 TEST(deep_nesting) {
-    trace::config.out = std::fopen("test_deep_nesting.log", "w");
+    trace::config.out = trace::safe_fopen("test_deep_nesting.log", "w");
     
     deeply_nested_call(50);
     
@@ -158,14 +158,14 @@ TEST(deep_nesting) {
 
 // Test 7: Ring buffer wraparound
 TEST(ring_buffer_wraparound) {
-    trace::config.out = std::fopen("test_wraparound.log", "w");
+    trace::config.out = trace::safe_fopen("test_wraparound.log", "w");
     
     // Generate many events to force wraparound
-    // TRACE_RING_CAP is default 4096
+    // TRC_RING_CAP is default 4096
     for (int i = 0; i < 5000; i++) {
-        TRACE_SCOPE();
+        TRC_SCOPE();
         if (i % 100 == 0) {
-            TRACE_MSG("Event %d", i);
+            TRC_MSG("Event %d", i);
         }
     }
     
@@ -176,19 +176,19 @@ TEST(ring_buffer_wraparound) {
 
 // Test 8: Message formatting and truncation
 TEST(message_formatting) {
-    trace::config.out = std::fopen("test_message_format.log", "w");
+    trace::config.out = trace::safe_fopen("test_message_format.log", "w");
     
-    TRACE_SCOPE();
+    TRC_SCOPE();
     
     // Test various format specifiers
-    TRACE_MSG("Integer: %d", 42);
-    TRACE_MSG("Float: %.2f", 3.14159);
-    TRACE_MSG("String: %s", "hello world");
-    TRACE_MSG("Multiple: %d %s %.1f", 1, "test", 2.5);
+    TRC_MSG("Integer: %d", 42);
+    TRC_MSG("Float: %.2f", 3.14159);
+    TRC_MSG("String: %s", "hello world");
+    TRC_MSG("Multiple: %d %s %.1f", 1, "test", 2.5);
     
-    // Test very long message (should truncate at TRACE_MSG_CAP)
+    // Test very long message (should truncate at TRC_MSG_CAP)
     std::string long_msg(300, 'X');
-    TRACE_MSG("Long message: %s", long_msg.c_str());
+    TRC_MSG("Long message: %s", long_msg.c_str());
     
     trace::flush_all();
     std::fclose(trace::config.out);
@@ -197,12 +197,12 @@ TEST(message_formatting) {
 
 // Test 9: Timing accuracy
 static void timed_function() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 }
 
 TEST(timing_accuracy) {
-    trace::config.out = std::fopen("test_timing.log", "w");
+    trace::config.out = trace::safe_fopen("test_timing.log", "w");
     trace::config.print_timing = true;
     
     timed_function();
@@ -218,15 +218,15 @@ TEST(timing_accuracy) {
 
 // Test 10: Binary dump format
 TEST(binary_dump) {
-    trace::config.out = std::fopen("test_binary.log", "w");
+    trace::config.out = trace::safe_fopen("test_binary.log", "w");
     
     {
-        TRACE_SCOPE();
-        TRACE_MSG("Binary dump test message");
+        TRC_SCOPE();
+        TRC_MSG("Binary dump test message");
         
         for (int i = 0; i < 5; i++) {
-            TRACE_SCOPE();
-            TRACE_MSG("Nested %d", i);
+            TRC_SCOPE();
+            TRC_MSG("Nested %d", i);
         }
     }
     
@@ -234,11 +234,11 @@ TEST(binary_dump) {
     std::fclose(trace::config.out);
     
     // Test binary dump
-    bool ok = trace::dump_binary("test_comprehensive.bin");
-    TEST_ASSERT(ok, "Binary dump failed");
+    std::string filename = trace::dump_binary("test_comprehensive.bin");
+    TEST_ASSERT(!filename.empty(), "Binary dump failed");
     
     // Verify file exists and has content
-    FILE* f = std::fopen("test_comprehensive.bin", "rb");
+    FILE* f = trace::safe_fopen("test_comprehensive.bin", "rb");
     TEST_ASSERT(f != nullptr, "Binary file not created");
     
     fseek(f, 0, SEEK_END);
@@ -251,12 +251,12 @@ TEST(binary_dump) {
 
 // Test 11: Auto-flush behavior
 TEST(auto_flush) {
-    trace::config.out = std::fopen("test_autoflush.log", "w");
+    trace::config.out = trace::safe_fopen("test_autoflush.log", "w");
     trace::config.auto_flush_at_exit = true;
     
     {
-        TRACE_SCOPE();
-        TRACE_MSG("Auto-flush test");
+        TRC_SCOPE();
+        TRC_MSG("Auto-flush test");
     }
     
     // Don't manually flush - rely on auto-flush
@@ -268,21 +268,21 @@ TEST(auto_flush) {
 
 // Test 12: Thread-local ring independence
 TEST(thread_local_independence) {
-    trace::config.out = std::fopen("test_thread_local.log", "w");
+    trace::config.out = trace::safe_fopen("test_thread_local.log", "w");
     
     std::thread t1([]() {
-        TRACE_SCOPE();
-        TRACE_MSG("Thread 1");
+        TRC_SCOPE();
+        TRC_MSG("Thread 1");
     });
     
     std::thread t2([]() {
-        TRACE_SCOPE();
-        TRACE_MSG("Thread 2");
+        TRC_SCOPE();
+        TRC_MSG("Thread 2");
     });
     
     {
-        TRACE_SCOPE();
-        TRACE_MSG("Main thread");
+        TRC_SCOPE();
+        TRC_MSG("Main thread");
     }
     
     t1.join();

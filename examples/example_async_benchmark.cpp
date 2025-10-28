@@ -19,7 +19,7 @@ const int WARMUP_ITERATIONS = 1000;
 const int BENCH_ITERATIONS = 10000;
 
 void benchmark_function() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     // Empty function - just measure trace overhead
 }
 
@@ -30,9 +30,9 @@ double measure_overhead(trace::TracingMode mode, int num_threads = 1) {
     if (mode == trace::TracingMode::Immediate) {
         // Restart async queue for immediate mode
         trace::stop_async_immediate();
-        trace::start_async_immediate(std::fopen("benchmark_immediate.log", "w"));
+        trace::start_async_immediate(trace::safe_fopen("benchmark_immediate.log", "w"));
     } else {
-        trace::config.out = std::fopen("benchmark_buffered.log", "w");
+        trace::config.out = trace::safe_fopen("benchmark_buffered.log", "w");
     }
     
     // Warmup
@@ -103,7 +103,7 @@ double measure_overhead(trace::TracingMode mode, int num_threads = 1) {
 int main() {
     std::printf("=====================================================\n");
     std::printf("Async Immediate Mode Performance Benchmark\n");
-    std::printf("trace-scope v%s\n", TRACE_SCOPE_VERSION);
+    std::printf("trace-scope v%s\n", TRC_SCOPE_VERSION);
     std::printf("=====================================================\n\n");
     
     std::printf("Benchmark configuration:\n");

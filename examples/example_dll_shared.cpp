@@ -1,6 +1,6 @@
 /**
  * @file example_dll_shared.cpp
- * @brief Example demonstrating simple DLL state sharing with TRACE_SETUP_DLL_SHARED().
+ * @brief Example demonstrating simple DLL state sharing with TRC_SETUP_DLL_SHARED().
  * 
  * This example shows how to share trace state across multiple DLLs using
  * the convenience macro. Just one line in main() - automatic setup and cleanup!
@@ -10,7 +10,7 @@
  * - Cannot control which files are compiled
  * - Need unified trace output from all DLLs
  * 
- * New simple approach: Just use TRACE_SETUP_DLL_SHARED() macro!
+ * New simple approach: Just use TRC_SETUP_DLL_SHARED() macro!
  * 
  * What's shared:
  * - Config: All DLLs use same configuration
@@ -32,7 +32,7 @@
 //     struct TraceInit {
 //         TraceInit() {
 //             trace::set_external_state(&g_trace_config, &g_trace_registry);
-//             g_trace_config.out = std::fopen("dll_shared.log", "w");
+//             g_trace_config.out = trace::safe_fopen("dll_shared.log", "w");
 //         }
 //         ~TraceInit() {
 //             trace::flush_all();
@@ -52,16 +52,16 @@
  * @brief Simulates a function in DLL #1
  */
 void dll1_function() {
-    TRACE_SCOPE();
-    TRACE_LOG << "This would be in DLL #1";  // Stream-based logging
+    TRC_SCOPE();
+    TRC_LOG << "This would be in DLL #1";  // Stream-based logging
 }
 
 /**
  * @brief Simulates a function in DLL #2
  */
 void dll2_function() {
-    TRACE_SCOPE();
-    TRACE_LOG << "This would be in DLL #2";  // Stream-based logging
+    TRC_SCOPE();
+    TRC_LOG << "This would be in DLL #2";  // Stream-based logging
     dll1_function();  // Cross-DLL call
 }
 
@@ -72,17 +72,17 @@ int main() {
     // ========================================================================
     // SIMPLE SETUP: Just one line for DLL state sharing!
     // ========================================================================
-    TRACE_SETUP_DLL_SHARED();  // Automatic setup & cleanup via RAII
+    TRC_SETUP_DLL_SHARED();  // Automatic setup & cleanup via RAII
     
     // Configure trace output (use get_config() to access the shared config)
-    trace::get_config().out = std::fopen("dll_shared.log", "w");
+    trace::get_config().out = trace::safe_fopen("dll_shared.log", "w");
     trace::get_config().print_timestamp = false;
     trace::get_config().print_thread = true;
     
-    TRACE_SCOPE();
+    TRC_SCOPE();
     
     std::printf("=== DLL State Sharing Example (Simplified) ===\n");
-    std::printf("Setup: TRACE_SETUP_DLL_SHARED() - just 1 line!\n");
+    std::printf("Setup: TRC_SETUP_DLL_SHARED() - just 1 line!\n");
     std::printf("All traces will be written to dll_shared.log\n\n");
     
     // Call functions from different "DLLs"

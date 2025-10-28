@@ -4,6 +4,508 @@ This document tracks major features, design decisions, and implementation milest
 
 ---
 
+## October 27, 2025 - v0.14.1-alpha
+
+### libclang-Based Modular Architecture
+**Version:** 0.14.1-alpha  
+**Enhancement:** Implemented libclang-based AST parsing for accurate C++ modular extraction
+
+**Major Achievement:** AST-Based C++ Parsing
+
+Implemented a comprehensive libclang-based modular header architecture that addresses fundamental challenges in C++ header modularization.
+
+**Core Tools Created:**
+- `tools/cpp_ast_parser.py`: Core AST parsing using libclang for accurate C++ understanding
+- `tools/extract_modular.py`: Extract modules from monolithic header using AST parsing
+- `tools/ast_aware_merger.py`: Merge modules with AST validation and dependency analysis
+- `tools/hybrid_extractor.py`: Hybrid approach combining AST parsing with manual fixes
+- `tools/fix_modular_issues.py`: Surgical fixes for specific compilation issues
+- `tools/final_fix.py`: Comprehensive compilation error resolution
+
+**AST Parser Features:**
+- Accurate C++ AST parsing using libclang
+- Extraction of namespaces, functions, structs, enums, variables, macros
+- Proper handling of conditional compilation blocks
+- Source text extraction with correct line/column positioning
+- Validation of parsed C++ code
+
+**Technical Insights:**
+- **Dependency Isolation:** Individual C++ modules cannot be parsed in isolation due to missing dependencies
+- **Regex Limitations:** Regex-based parsing insufficient for complex C++ constructs and nested structures
+- **Conditional Compilation:** Platform-specific includes and defines require careful handling
+- **Namespace Merging:** Multiple namespace blocks need intelligent consolidation
+- **Macro Dependencies:** Preprocessor macros require dependency-aware ordering
+
+**Solutions Implemented:**
+- **AST-Based Parsing:** libclang provides proper C++ language understanding
+- **Hybrid Approach:** Combine AST parsing with manual fixes for edge cases
+- **Validation:** AST validation ensures syntactically correct output
+- **Foundation:** Robust base for future modular improvements
+
+### Modular Header Architecture
+**Version:** 0.14.1-alpha  
+**Enhancement:** Refactored monolithic header into modular source files for improved maintainability
+
+**Problem:**
+- Single 2000+ line header file difficult to maintain and navigate
+- Hard to isolate and test individual components
+- Complex interdependencies made refactoring error-prone
+- Difficult to understand code organization at a glance
+
+**Solution:** Implemented modular header architecture with automated merging:
+
+**Modular Structure:**
+- Split header into 12 logical modules organized by concern
+- `platform.hpp` - Platform detection, system includes, build defines
+- `types/` directory - 9 files for structs, classes, enums (Event, Config, Ring, Registry, Scope, etc.)
+- `variables.hpp` - Global variable declarations
+- `functions.hpp` - All function implementations (~800 lines)
+- `macros.hpp` - TRC_* macro definitions
+
+**Merge Tool (`tools/merge_header.py`):**
+- Intelligent C++ header parser that strips header guards
+- Consolidates all includes at the top of merged header
+- Preserves conditional compilation blocks (#ifdef, #ifndef, #if defined)
+- Creates single unified `namespace trace {}` block
+- Places macros outside namespace (as required)
+- Handles complex preprocessor dependencies and ordering
+- Validates proper structure and prevents duplicate definitions
+
+**Key Technical Achievements:**
+- Preserved 100% backward compatibility - users see no changes
+- All 12 comprehensive tests pass without modification
+- Zero runtime overhead - merged header is functionally identical
+- Maintained header-only library design
+- Cross-platform conditional compilation preserved correctly
+
+**Testing:**
+- Verified compilation on Windows with Clang
+- All examples run correctly (basic, colors, hybrid, filtering, etc.)
+- Comprehensive test suite passes (12/12 tests)
+- Binary trace format unchanged
+
+**Benefits:**
+- Each module is 200-500 lines (vs 2000+ line monolith)
+- Clear separation of concerns improves code navigation
+- Easier to add new features and refactor existing code
+- Better IDE support (faster parsing, better autocomplete)
+- Facilitates future enhancements (better linting, analysis tools)
+
+**Files Added:**
+- `include/trace-scope/trace_scope_modular/` (directory with 12 modular files)
+- `include/trace-scope/trace_scope_original.hpp` (backup of original)
+- `tools/merge_header.py` (header merge tool, ~400 lines Python)
+
+**Developer Workflow:**
+1. Edit modular sources in `trace_scope_modular/`
+2. Run merge tool: `python tools/merge_header.py --input include/trace-scope/trace_scope_modular --output include/trace-scope/trace_scope.hpp`
+3. Test compilation and functionality
+4. Commit both modular sources and generated header
+
+---
+
+## October 24, 2025 - v0.14.0-alpha
+
+### Code Quality and Tooling
+**Version:** 0.14.0-alpha  
+**Enhancement:** Integrated clang-tidy into CMake build system with comprehensive code quality checks
+
+**Problem:**
+- No automated code quality checking
+- Deprecation warnings on Windows (fopen, strncpy, tmpfile)
+- Inconsistent code style across codebase
+- No modern C++ best practices enforcement
+- Manual code review required for quality assurance
+
+**Solution:** Implemented comprehensive clang-tidy integration:
+
+**Configuration:**
+- Created `.clang-tidy` with 100+ checks enabled
+- Disabled checks that conflict with header-only library design
+- Warnings-as-errors for strict quality enforcement
+- C++17 compatibility maintained
+
+**CMake Integration:**
+- Added `ENABLE_CLANG_TIDY` option to CMakeLists.txt
+- Created `lint` preset in CMakePresets.json
+- Automatic clang-tidy execution during build
+- Cross-platform support (Windows, Linux, macOS)
+
+**Code Fixes:**
+- Added `safe_fopen()` wrapper to replace deprecated `fopen()`
+- Added `safe_tmpfile()` wrapper to replace deprecated `tmpfile()`
+- Fixed `strncpy()` usage with proper null termination
+- Replaced all `std::fopen` calls with `trace::safe_fopen`
+- Replaced all `std::tmpfile` calls with `trace::safe_tmpfile`
+
+**Tooling:**
+- Created `scripts/lint.sh` (Linux/macOS) and `scripts/lint.bat` (Windows)
+- Updated README.md with Code Quality section
+- Added lint artifacts to .gitignore
+
+**Usage:**
+```bash
+# Run linting
+cmake --preset lint
+cmake --build --preset lint
+
+# Or use convenience scripts
+./scripts/lint.sh        # Linux/macOS
+scripts\lint.bat         # Windows
+```
+
+**Benefits:**
+- Automated code quality enforcement
+- Cross-platform safe file operations
+- Modern C++ best practices
+- IDE integration for real-time feedback
+- CI/CD ready linting workflow
+
+**Breaking Changes:** None - all changes are backward compatible
+
+---
+
+## October 24, 2025 - v0.13.0-alpha
+
+### CMakePresets Build System
+**Version:** 0.13.0-alpha  
+**Enhancement:** Replaced custom build scripts with CMakePresets for cross-platform portability and IDE integration
+
+**Problem:**
+- Custom PowerShell/batch scripts were Windows-only
+- Required manual environment setup (vcvarsall.bat)
+- No IDE integration (Visual Studio, VS Code, CLion)
+- Duplicated logic across multiple scripts
+- Hard to discover available build configurations
+
+**Solution:** Implemented comprehensive CMakePresets.json with:
+
+**Cross-Platform Presets:**
+- **Windows**: `windows-msvc-debug`, `windows-msvc-release`, `windows-msvc-release-doublebuf`, `windows-clang-debug`, `windows-clang-release`
+- **Linux**: `linux-gcc-debug`, `linux-gcc-release`, `linux-clang-debug`, `linux-clang-release`
+- **macOS**: `macos-clang-debug`, `macos-clang-release`
+
+**Key Features:**
+- **IDE Integration**: Native support in Visual Studio, VS Code, CLion, Qt Creator
+- **Cross-Platform**: Same workflow on Windows/Linux/macOS
+- **Discoverable**: `cmake --list-presets` shows all available configurations
+- **Inheritance**: Base presets reduce duplication
+- **User Overrides**: CMakeUserPresets.json for local customization
+
+**Usage Examples:**
+```bash
+# List available presets
+cmake --list-presets
+
+# Configure and build
+cmake --preset windows-msvc-release
+cmake --build --preset windows-msvc-release
+
+# Run tests
+ctest --preset windows-msvc-release
+```
+
+**Migration:**
+- Old scripts marked as deprecated with warning messages
+- CMakePresets.json provides all functionality
+- Traditional CMake commands still work as fallback
+- Updated README.md with CMakePresets documentation
+
+**Benefits:**
+- **Portable**: Works on all platforms with same commands
+- **IDE-Friendly**: Full integration with development environments
+- **Maintainable**: Single configuration file vs multiple scripts
+- **Discoverable**: Built-in help and preset listing
+- **Flexible**: Easy to add new configurations
+
+---
+
+## October 24, 2025 - v0.12.0-alpha
+
+### Python Tools Consolidation
+**Version:** 0.12.0-alpha  
+**Enhancement:** Consolidated all Python tools into 2 files for easy deployment
+
+**Problem:**
+- 11 separate Python files (6 tools + 5 test files) made deployment complex
+- Users needed to download/copy multiple files
+- Scattered functionality across different scripts
+- Difficult to discover all available commands
+
+**Solution:** Consolidated into 2 files with unified CLI:
+
+**New Structure:**
+```
+tools/
+├── trc.py          # All-in-one tool (2,600+ lines)
+└── test_trc.py     # Unified test suite (1,500+ lines)
+```
+
+**Consolidated Tools in `trc.py`:**
+- `instrument` - Add/remove TRC_SCOPE() and TRC_ARG() macros
+- `analyze` - Display and analyze trace files
+- `stats` - Generate performance statistics  
+- `callgraph` - Generate call graphs
+- `compare` - Compare trace performance
+- `diff` - Diff two trace files
+
+**Key Benefits:**
+- **Easy deployment:** Just copy 2 files instead of 11
+- **Single tool:** All functionality in one place with `python trc.py <command>`
+- **Unified testing:** All 53 tests in one file using unittest framework
+- **Better discoverability:** `python trc.py --help` shows all commands
+- **Zero dependencies:** Only Python standard library required
+
+**Migration Guide:**
+```bash
+# Old way (multiple files)
+python tools/trc_instrument.py add file.cpp
+python tools/trc_analyze.py display trace.trc
+python tools/trc_analyze.py stats trace.trc
+
+# New way (single tool)
+python tools/trc.py instrument add file.cpp
+python tools/trc.py analyze trace.trc
+python tools/trc.py stats trace.trc
+```
+
+**Files Removed:**
+- `trc_instrument.py`, `trc_analyze.py`, `trc_callgraph.py`, `trc_compare.py`, `trc_diff.py`, `trc_common.py`
+- `test_trc_instrument.py`, `test_trc_analyze.py`, `test_trc_callgraph.py`, `test_trc_compare.py`, `test_trc_diff.py`
+
+**Documentation Updated:**
+- README.md updated with new command syntax
+- requirements.txt updated to reflect consolidated structure
+- All examples updated to use `trc.py`
+
+---
+
+## October 24, 2025 - v0.11.0-alpha
+
+### Breaking Change: Rename All TRACE_* Macros to TRC_*
+**Version:** 0.11.0-alpha  
+**Breaking Change:** All TRACE_* macros renamed to TRC_* to avoid conflicts with common logging libraries
+
+**Problem:** 
+- `TRACE_SCOPE`, `TRACE_MSG`, `TRACE_LOG`, etc. are very common macro names
+- Conflicts with existing logging systems (Boost.Log, spdlog, custom logging frameworks)
+- Python instrumentation tools have difficulty finding the correct macros
+- Macro name collisions cause compilation errors in projects using multiple logging libraries
+
+**Solution:** Renamed all TRACE_* macros to TRC_* throughout the entire codebase:
+
+**Macro Renaming Map:**
+```cpp
+// User-facing macros
+TRACE_SCOPE()              → TRC_SCOPE()
+TRACE_MSG(...)             → TRC_MSG(...)
+TRACE_LOG                  → TRC_LOG
+TRACE_ARG(...)             → TRC_ARG(...)
+TRACE_CONTAINER(...)       → TRC_CONTAINER(...)
+TRACE_SETUP_DLL_SHARED()   → TRC_SETUP_DLL_SHARED()
+TRACE_SETUP_DLL_SHARED_WITH_CONFIG(...) → TRC_SETUP_DLL_SHARED_WITH_CONFIG(...)
+
+// Build configuration macros
+TRACE_ENABLED              → TRC_ENABLED
+TRACE_RING_CAP             → TRC_RING_CAP
+TRACE_MSG_CAP              → TRC_MSG_CAP
+TRACE_DEPTH_MAX            → TRC_DEPTH_MAX
+TRACE_DOUBLE_BUFFER        → TRC_DOUBLE_BUFFER
+TRACE_NUM_BUFFERS          → TRC_NUM_BUFFERS
+TRACE_SCOPE_VERSION        → TRC_SCOPE_VERSION
+TRACE_SCOPE_VERSION_MAJOR  → TRC_SCOPE_VERSION_MAJOR
+TRACE_SCOPE_VERSION_MINOR  → TRC_SCOPE_VERSION_MINOR
+TRACE_SCOPE_VERSION_PATCH  → TRC_SCOPE_VERSION_PATCH
+TRACE_SCOPE_API            → TRC_SCOPE_API
+```
+
+**Key Design Decisions:**
+- **Why TRC_*?** Short (3 chars), distinctive, matches Python tool names (`trc_analyze.py`, etc.)
+- **Why no backward compatibility?** Clean break prevents confusion, forces proper migration
+- **Why rename everything?** Consistent naming scheme, no mixed old/new macro names
+- **Why now?** Before 1.0 release, when breaking changes are still acceptable
+
+**Files Modified:**
+- **1 header file**: `include/trace-scope/trace_scope.hpp` (all macro definitions and documentation)
+- **18 example files**: All `examples/*.cpp` files updated
+- **11 test files**: All `tests/*.cpp` files updated  
+- **3 CMakeLists.txt files**: Updated build flags
+- **Documentation**: `README.md`, `HISTORY.md` updated
+- **Version**: Bumped to 0.11.0-alpha
+
+**Migration Guide:**
+```cpp
+// Old code (v0.10.0 and earlier)
+#include <trace-scope/trace_scope.hpp>
+TRACE_SCOPE();
+TRACE_MSG("Value: %d", x);
+TRACE_LOG << "Processing item " << id;
+TRACE_ARG("id", int, id);
+TRACE_CONTAINER(values, 5);
+TRACE_SETUP_DLL_SHARED();
+
+// New code (v0.11.0)
+#include <trace-scope/trace_scope.hpp>
+TRC_SCOPE();
+TRC_MSG("Value: %d", x);
+TRC_LOG << "Processing item " << id;
+TRC_ARG("id", int, id);
+TRC_CONTAINER(values, 5);
+TRC_SETUP_DLL_SHARED();
+
+// Build flags
+// Old: -DTRACE_ENABLED=1 -DTRACE_RING_CAP=8192
+// New: -DTRC_ENABLED=1 -DTRC_RING_CAP=8192
+```
+
+**Simple Find/Replace Patterns:**
+- Find: `TRACE_SCOPE(` → Replace: `TRC_SCOPE(`
+- Find: `TRACE_MSG(` → Replace: `TRC_MSG(`
+- Find: `TRACE_LOG` → Replace: `TRC_LOG`
+- Find: `TRACE_ARG(` → Replace: `TRC_ARG(`
+- Find: `TRACE_CONTAINER(` → Replace: `TRC_CONTAINER(`
+- Find: `TRACE_SETUP_DLL_SHARED` → Replace: `TRC_SETUP_DLL_SHARED`
+- Find: `-DTRACE_` → Replace: `-DTRC_`
+
+**Benefits:**
+- ✅ **No naming conflicts**: TRC_* prefix is unique and distinctive
+- ✅ **Python tool compatibility**: Matches existing `trc_*` tool naming
+- ✅ **Clean migration**: Simple find/replace patterns for all changes
+- ✅ **Future-proof**: No conflicts with common logging libraries
+- ✅ **Consistent branding**: Unified `trc-` namespace across C++ and Python
+
+**Breaking Changes:**
+- **All TRACE_* macros**: Renamed to TRC_* (no backward compatibility)
+- **Build flags**: All `-DTRACE_*` flags renamed to `-DTRC_*`
+- **Documentation**: All examples and docs use TRC_* macros
+- **Migration required**: All existing code must be updated
+
+**Testing:**
+- All examples compile and run with new macro names
+- All tests pass with TRC_* macros
+- Build system updated to use TRC_* flags
+- Documentation updated throughout
+
+---
+
+## October 22, 2025 - v0.10.0-alpha
+
+### Configurable Flush Behavior and Auto-Detecting Shared Memory
+**Version:** 0.10.0-alpha  
+**Feature:** Configurable flush behavior and three-mode shared memory system
+
+**Problem:** 
+- Flush behavior was hardcoded to only flush on outermost scope exit
+- Shared memory mode required explicit setup even when auto-detection was possible
+- No flexibility for different use cases (performance vs safety trade-offs)
+
+**Solution:** Implemented configurable flush behavior and auto-detecting shared memory system:
+
+**1. Configurable Flush Behavior:**
+- Added `FlushMode` enum with three options:
+  - `NEVER`: No auto-flush on scope exit (maximum performance)
+  - `OUTERMOST_ONLY`: Flush only when depth returns to 0 (default, balanced)
+  - `EVERY_SCOPE`: Flush on every scope exit (maximum safety, high overhead)
+- Updated `Scope::~Scope()` to use configurable flush mode
+- Added `Config::flush_mode` field with default `FlushMode::OUTERMOST_ONLY`
+
+**2. Three-Mode Shared Memory System:**
+- Added `SharedMemoryMode` enum with three options:
+  - `AUTO`: Auto-detect if shared memory is needed (default)
+  - `DISABLED`: Force thread_local mode even in DLL contexts
+  - `ENABLED`: Always use shared memory mode
+- Implemented `should_use_shared_memory()` auto-detection function
+- Updated `thread_ring()` to respect shared memory mode setting
+- Added `Config::shared_memory_mode` field with default `SharedMemoryMode::AUTO`
+
+**3. Configuration File Support:**
+- Added parsing for both new options in `[modes]` section:
+  ```ini
+  [modes]
+  flush_mode = outermost        # Options: never, outermost, every
+  shared_memory_mode = auto     # Options: auto, disabled, enabled
+  ```
+- Case-insensitive parsing with proper error messages for invalid values
+
+**4. Auto-Detection Logic:**
+- `AUTO` mode detects if shared memory already exists by attempting to open it
+- If shared memory exists, uses shared mode; otherwise uses thread_local
+- Works seamlessly with existing `TRACE_SETUP_DLL_SHARED()` macro
+- No manual configuration needed for most use cases
+
+**Key Design Decisions:**
+- **Why configurable flush?** Different use cases need different trade-offs (performance vs safety)
+- **Why auto-detect shared memory?** Simplifies usage while maintaining flexibility
+- **Why three modes?** Covers all use cases: auto-detect (default), force-off, force-on
+- **Why outermost default?** Maintains backward compatibility while allowing customization
+
+**Performance Impact:**
+- `flush_mode = NEVER`: Zero flush overhead (maximum performance)
+- `flush_mode = OUTERMOST_ONLY`: Minimal overhead, same as before (default)
+- `flush_mode = EVERY_SCOPE`: High overhead, use only when needed
+- `shared_memory_mode = AUTO`: Minimal detection overhead on first call
+- `shared_memory_mode = DISABLED`: Zero shared memory overhead
+- `shared_memory_mode = ENABLED`: Shared memory overhead even in single-exe programs
+
+**API Changes:**
+```cpp
+// New configuration options
+trace::config.flush_mode = trace::FlushMode::OUTERMOST_ONLY;  // Default
+trace::config.shared_memory_mode = trace::SharedMemoryMode::AUTO;  // Default
+
+// Programmatic configuration
+trace::config.flush_mode = trace::FlushMode::EVERY_SCOPE;  // High safety
+trace::config.shared_memory_mode = trace::SharedMemoryMode::ENABLED;  // Force shared
+
+// Configuration file
+trace::load_config("trace.conf");  // Loads flush_mode and shared_memory_mode
+```
+
+**Configuration Examples:**
+```ini
+# High-performance mode (no flushing, thread-local)
+[modes]
+flush_mode = never
+shared_memory_mode = disabled
+
+# High-safety mode (flush every scope, shared memory)
+[modes]
+flush_mode = every
+shared_memory_mode = enabled
+
+# Balanced mode (default behavior)
+[modes]
+flush_mode = outermost
+shared_memory_mode = auto
+```
+
+**Benefits:**
+- ✅ **Flexible flush behavior**: Choose between performance and safety
+- ✅ **Auto-detecting shared memory**: No manual setup needed in most cases
+- ✅ **Backward compatible**: Default behavior unchanged
+- ✅ **DLL-friendly**: Auto-detects when shared memory is needed
+- ✅ **Performance options**: Can disable flushing and shared memory for maximum speed
+- ✅ **Safety options**: Can force flush every scope for maximum safety
+
+**Use Cases:**
+1. **High-performance tracing**: `flush_mode = never, shared_memory_mode = disabled`
+2. **DLL debugging**: `shared_memory_mode = auto` (default, auto-detects)
+3. **Real-time monitoring**: `flush_mode = every` for immediate output
+4. **Production tracing**: `flush_mode = outermost` (default, balanced)
+5. **Single-executable**: `shared_memory_mode = disabled` to avoid shared memory overhead
+
+**Files Modified:**
+- `include/trace-scope/trace_scope.hpp` - Added enums, config fields, auto-detection logic, updated Scope destructor and thread_ring()
+- `VERSION` - Bumped to 0.10.0-alpha
+- `HISTORY.md` - This entry
+
+**Migration Guide:**
+- **No code changes needed**: Default behavior is identical to v0.9.0
+- **Optional configuration**: Add flush_mode and shared_memory_mode to config files if needed
+- **DLL users**: No changes needed, auto-detection works with existing `TRACE_SETUP_DLL_SHARED()`
+
+---
+
 ## October 20, 2025 - v0.9.0-alpha
 
 ### Async Immediate Mode

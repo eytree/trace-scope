@@ -12,16 +12,16 @@
 #include <cstdio>
 
 void do_work(int iteration) {
-    TRACE_SCOPE();
-    TRACE_MSG("Starting iteration %d", iteration);
+    TRC_SCOPE();
+    TRC_MSG("Starting iteration %d", iteration);
     
     // Simulate some work
     for (int j = 0; j < 3; ++j) {
-        TRACE_MSG("Work step %d/%d", j + 1, 3);
+        TRC_MSG("Work step %d/%d", j + 1, 3);
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
     
-    TRACE_MSG("Completed iteration %d", iteration);
+    TRC_MSG("Completed iteration %d", iteration);
 }
 
 int main() {
@@ -40,8 +40,8 @@ int main() {
     trace::config.mode = trace::TracingMode::Buffered;
     trace::config.out = nullptr;  // Don't print trace output
     
-    TRACE_SCOPE();
-    TRACE_MSG("Long-running process starting");
+    TRC_SCOPE();
+    TRC_MSG("Long-running process starting");
     
     std::printf("Simulating long-running process with 10 iterations...\n");
     std::printf("Dumping binary every 3 iterations:\n\n");
@@ -68,7 +68,7 @@ int main() {
         std::printf("  [Final] Dumped: %s\n", filename.c_str());
     }
     
-    TRACE_MSG("Long-running process complete");
+    TRC_MSG("Long-running process complete");
     
     std::printf("\n=======================================================================\n");
     std::printf("✓ Complete - Generated multiple timestamped trace files\n");

@@ -16,31 +16,31 @@
  * @brief Test function in main executable
  */
 void main_function() {
-    TRACE_SCOPE();
-    TRACE_MSG("Main executable function called");
+    TRC_SCOPE();
+    TRC_MSG("Main executable function called");
     
     // Call DLL functions
-    TRACE_MSG("Calling DLL functions...");
+    TRC_MSG("Calling DLL functions...");
     dll_function_level1();
     dll_function_level2();
     
-    TRACE_MSG("Main function completed");
+    TRC_MSG("Main function completed");
 }
 
 /**
  * @brief Test math operations across DLL boundary
  */
 void test_math_operations() {
-    TRACE_SCOPE();
-    TRACE_MSG("Testing math operations across DLL boundary");
+    TRC_SCOPE();
+    TRC_MSG("Testing math operations across DLL boundary");
     
     int a = 15, b = 25;
-    TRACE_MSG("Testing with values: a=%d, b=%d", a, b);
+    TRC_MSG("Testing with values: a=%d, b=%d", a, b);
     
     int sum = dll_math_add(a, b);
     int product = dll_math_multiply(a, b);
     
-    TRACE_MSG("Results: sum=%d, product=%d", sum, product);
+    TRC_MSG("Results: sum=%d, product=%d", sum, product);
     
     // Verify results
     if (sum != a + b) {
@@ -55,19 +55,19 @@ void test_math_operations() {
         std::exit(1);
     }
     
-    TRACE_MSG("Math operations verified successfully");
+    TRC_MSG("Math operations verified successfully");
 }
 
 /**
  * @brief Test nested calls across DLL boundary
  */
 void test_nested_calls() {
-    TRACE_SCOPE();
-    TRACE_MSG("Testing nested calls across DLL boundary");
+    TRC_SCOPE();
+    TRC_MSG("Testing nested calls across DLL boundary");
     
     dll_nested_calls();
     
-    TRACE_MSG("Nested calls test completed");
+    TRC_MSG("Nested calls test completed");
 }
 
 /**
@@ -77,7 +77,7 @@ int main() {
     // ========================================================================
     // CRITICAL: Set up DLL state sharing BEFORE any tracing occurs
     // ========================================================================
-    TRACE_SETUP_DLL_SHARED();
+    TRC_SETUP_DLL_SHARED();
     
     // Configure trace output
     trace::get_config().out = std::fopen("test_dll_output.log", "w");
@@ -92,10 +92,10 @@ int main() {
     
     std::printf("=== DLL State Sharing Test ===\n");
     std::printf("This test verifies that trace state is properly shared\n");
-    std::printf("across DLL boundaries using TRACE_SETUP_DLL_SHARED().\n\n");
+    std::printf("across DLL boundaries using TRC_SETUP_DLL_SHARED().\n\n");
     
-    TRACE_SCOPE();
-    TRACE_MSG("Starting DLL state sharing test");
+    TRC_SCOPE();
+    TRC_MSG("Starting DLL state sharing test");
     
     // Test 1: Basic function calls
     std::printf("Test 1: Basic function calls\n");
@@ -109,7 +109,7 @@ int main() {
     std::printf("Test 3: Nested calls across DLL boundary\n");
     test_nested_calls();
     
-    TRACE_MSG("All DLL tests completed successfully");
+    TRC_MSG("All DLL tests completed successfully");
     
     // Flush all traces before closing
     trace::flush_all();

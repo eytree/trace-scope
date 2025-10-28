@@ -34,23 +34,23 @@
     } while (0)
 
 // Test helper functions with various names
-void test_function() { TRACE_SCOPE(); }
-void test_another() { TRACE_SCOPE(); }
-void my_function() { TRACE_SCOPE(); }
-void production_code() { TRACE_SCOPE(); }
-void debug_helper() { TRACE_SCOPE(); }
-void core_process() { TRACE_SCOPE(); }
+void test_function() { TRC_SCOPE(); }
+void test_another() { TRC_SCOPE(); }
+void my_function() { TRC_SCOPE(); }
+void production_code() { TRC_SCOPE(); }
+void debug_helper() { TRC_SCOPE(); }
+void core_process() { TRC_SCOPE(); }
 
 // Recursive function for depth testing
 void recursive(int depth) {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     if (depth > 0) recursive(depth - 1);
 }
 
 // Helper to count trace events
 int count_events_in_buffer() {
     // Flush to a temp file and count lines
-    FILE* tmp = std::tmpfile();
+    FILE* tmp = trace::safe_tmpfile();
     if (!tmp) return -1;
     
     FILE* old_out = trace::config.out;
@@ -250,7 +250,7 @@ TEST(filter_with_null_function) {
     trace::filter_clear();
     trace::filter_include_function("test_*");
     
-    // Null function pointer (e.g., for TRACE_MSG)
+    // Null function pointer (e.g., for TRC_MSG)
     // Should pass if file filter allows it
     TEST_ASSERT(trace::filter_utils::should_trace(nullptr, "file.cpp", 0));
 }
@@ -281,7 +281,7 @@ TEST(filter_complex_combination) {
 
 TEST(filter_from_ini_file) {
     // Create a temporary INI file with filter config
-    FILE* f = std::fopen("test_filter_temp.ini", "w");
+    FILE* f = trace::safe_fopen("test_filter_temp.ini", "w");
     TEST_ASSERT(f != nullptr);
     
     std::fprintf(f, "[filter]\n");

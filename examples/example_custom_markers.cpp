@@ -10,18 +10,18 @@
 #include <cstdio>
 
 void inner_function() {
-    TRACE_SCOPE();
-    TRACE_LOG << "Inside inner function";
+    TRC_SCOPE();
+    TRC_LOG << "Inside inner function";
 }
 
 void outer_function() {
-    TRACE_SCOPE();
-    TRACE_MSG("Calling inner from outer");
+    TRC_SCOPE();
+    TRC_MSG("Calling inner from outer");
     inner_function();
 }
 
 int main() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     
     std::printf("=== Testing Different Marker Styles ===\n\n");
     

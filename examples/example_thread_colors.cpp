@@ -13,8 +13,8 @@
 #include <chrono>
 
 void recursive_function(int id, int depth) {
-    TRACE_SCOPE();
-    TRACE_MSG("Worker %d at depth %d", id, depth);
+    TRC_SCOPE();
+    TRC_MSG("Worker %d at depth %d", id, depth);
     
     if (depth > 0) {
         // Add small delay to interleave threads
@@ -24,12 +24,12 @@ void recursive_function(int id, int depth) {
 }
 
 void worker_thread(int id) {
-    TRACE_SCOPE();
-    TRACE_MSG("Worker %d starting", id);
+    TRC_SCOPE();
+    TRC_MSG("Worker %d starting", id);
     
     recursive_function(id, 3);
     
-    TRACE_MSG("Worker %d done", id);
+    TRC_MSG("Worker %d done", id);
 }
 
 int main() {
@@ -60,8 +60,8 @@ int main() {
     std::printf("Starting 3 worker threads...\n\n");
     
     {
-        TRACE_SCOPE();
-        TRACE_MSG("Main thread initializing workers");
+        TRC_SCOPE();
+        TRC_MSG("Main thread initializing workers");
         
         std::vector<std::thread> threads;
         
@@ -77,7 +77,7 @@ int main() {
             t.join();
         }
         
-        TRACE_MSG("All workers completed");
+        TRC_MSG("All workers completed");
     }
     
     std::printf("\n");

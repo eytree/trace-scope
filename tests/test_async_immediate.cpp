@@ -13,13 +13,13 @@
 
 TEST(basic_async_immediate) {
     // Test basic async immediate mode - events should appear in output
-    trace::config.out = std::fopen("test_async_basic.log", "w");
+    trace::config.out = trace::safe_fopen("test_async_basic.log", "w");
     trace::config.mode = trace::TracingMode::Immediate;
     
     {
-        TRACE_SCOPE();
-        TRACE_MSG("Test message 1");
-        TRACE_MSG("Test message 2");
+        TRC_SCOPE();
+        TRC_MSG("Test message 1");
+        TRC_MSG("Test message 2");
     }
     
     // Force flush to ensure events written
@@ -43,7 +43,7 @@ TEST(basic_async_immediate) {
 
 TEST(multi_threaded_async_immediate) {
     // Test that async immediate mode works correctly with multiple threads
-    trace::config.out = std::fopen("test_async_multithread.log", "w");
+    trace::config.out = trace::safe_fopen("test_async_multithread.log", "w");
     trace::config.mode = trace::TracingMode::Immediate;
     
     const int num_threads = 4;
@@ -53,8 +53,8 @@ TEST(multi_threaded_async_immediate) {
     for (int t = 0; t < num_threads; ++t) {
         threads.emplace_back([t, iterations]() {
             for (int i = 0; i < iterations; ++i) {
-                TRACE_SCOPE();
-                TRACE_MSG("Thread %d iteration %d", t, i);
+                TRC_SCOPE();
+                TRC_MSG("Thread %d iteration %d", t, i);
                 std::this_thread::sleep_for(std::chrono::microseconds(10));
             }
         });
@@ -86,12 +86,12 @@ TEST(multi_threaded_async_immediate) {
 
 TEST(flush_immediate_queue_blocks) {
     // Test that flush_immediate_queue() actually blocks until queue is drained
-    trace::config.out = std::fopen("test_async_flush.log", "w");
+    trace::config.out = trace::safe_fopen("test_async_flush.log", "w");
     trace::config.mode = trace::TracingMode::Immediate;
     
     // Generate events
     for (int i = 0; i < 50; ++i) {
-        TRACE_MSG("Event %d", i);
+        TRC_MSG("Event %d", i);
     }
     
     // Flush should block until all events written
@@ -118,12 +118,12 @@ TEST(flush_immediate_queue_blocks) {
 TEST(async_queue_atexit_handler) {
     // Test that atexit handler properly flushes queue on shutdown
     // This is implicitly tested by other tests, but verify explicitly
-    trace::config.out = std::fopen("test_async_atexit.log", "w");
+    trace::config.out = trace::safe_fopen("test_async_atexit.log", "w");
     trace::config.mode = trace::TracingMode::Immediate;
     
     {
-        TRACE_SCOPE();
-        TRACE_MSG("Before shutdown");
+        TRC_SCOPE();
+        TRC_MSG("Before shutdown");
     }
     
     // Manually stop async queue (simulates atexit)
@@ -145,14 +145,14 @@ TEST(async_queue_atexit_handler) {
 
 TEST(configurable_flush_interval) {
     // Test different flush intervals
-    trace::config.out = std::fopen("test_async_interval.log", "w");
+    trace::config.out = trace::safe_fopen("test_async_interval.log", "w");
     trace::config.mode = trace::TracingMode::Immediate;
     trace::config.immediate_flush_interval_ms = 10;  // 10ms interval
     
     // Start async mode with custom config
     trace::start_async_immediate();
     
-    TRACE_MSG("Event with 10ms interval");
+    TRC_MSG("Event with 10ms interval");
     
     // Wait a bit longer than interval
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -176,13 +176,13 @@ TEST(configurable_flush_interval) {
 
 TEST(hybrid_mode_with_async) {
     // Test that hybrid mode uses async queue for immediate output
-    trace::config.out = std::fopen("test_async_hybrid_buffered.log", "w");
-    trace::config.immediate_out = std::fopen("test_async_hybrid_immediate.log", "w");
+    trace::config.out = trace::safe_fopen("test_async_hybrid_buffered.log", "w");
+    trace::config.immediate_out = trace::safe_fopen("test_async_hybrid_immediate.log", "w");
     trace::config.mode = trace::TracingMode::Hybrid;
     
     {
-        TRACE_SCOPE();
-        TRACE_MSG("Hybrid mode message");
+        TRC_SCOPE();
+        TRC_MSG("Hybrid mode message");
     }
     
     // Flush both buffered and immediate outputs

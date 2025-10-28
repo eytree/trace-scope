@@ -15,35 +15,35 @@
 #include <vector>
 
 void worker_task(int id, int iterations) {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     for (int i = 0; i < iterations; ++i) {
-        TRACE_MSG("Worker %d: iteration %d", id, i);
+        TRC_MSG("Worker %d: iteration %d", id, i);
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 }
 
 void critical_section() {
-    TRACE_SCOPE();
-    TRACE_MSG("Before critical operation");
+    TRC_SCOPE();
+    TRC_MSG("Before critical operation");
     
     // Critical operation
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     
-    TRACE_MSG("After critical operation");
+    TRC_MSG("After critical operation");
     
     // Force flush before proceeding (ensures events written if we crash next)
     trace::flush_immediate_queue();
     
-    TRACE_MSG("Critical section complete - events guaranteed written");
+    TRC_MSG("Critical section complete - events guaranteed written");
 }
 
 int main() {
     std::printf("=================================================\n");
-    std::printf("Async Immediate Mode Example (v%s)\n", TRACE_SCOPE_VERSION);
+    std::printf("Async Immediate Mode Example (v%s)\n", TRC_SCOPE_VERSION);
     std::printf("=================================================\n\n");
     
     // Configure for immediate mode
-    trace::config.out = std::fopen("async_immediate.log", "w");
+    trace::config.out = trace::safe_fopen("async_immediate.log", "w");
     trace::config.mode = trace::TracingMode::Immediate;
     trace::config.immediate_flush_interval_ms = 1;  // Flush every 1ms (default)
     
@@ -53,15 +53,15 @@ int main() {
     std::printf("Output file: async_immediate.log\n\n");
     
     {
-        TRACE_SCOPE();
-        TRACE_MSG("Starting basic test");
+        TRC_SCOPE();
+        TRC_MSG("Starting basic test");
         
         for (int i = 0; i < 5; ++i) {
-            TRACE_MSG("Loop iteration %d", i);
+            TRC_MSG("Loop iteration %d", i);
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         
-        TRACE_MSG("Basic test complete");
+        TRC_MSG("Basic test complete");
     }
     
     std::printf("✓ Basic test complete\n\n");
@@ -81,7 +81,7 @@ int main() {
     std::printf("Multiple threads trace concurrently without blocking\n\n");
     
     {
-        TRACE_SCOPE();
+        TRC_SCOPE();
         std::vector<std::thread> threads;
         
         for (int t = 0; t < 4; ++t) {
@@ -92,7 +92,7 @@ int main() {
             th.join();
         }
         
-        TRACE_MSG("All worker threads completed");
+        TRC_MSG("All worker threads completed");
     }
     
     std::printf("✓ Multi-threaded test complete\n\n");
@@ -110,13 +110,13 @@ int main() {
     trace::start_async_immediate();
     
     {
-        TRACE_SCOPE();
+        TRC_SCOPE();
         for (int i = 0; i < 20; ++i) {
-            TRACE_MSG("Fast event %d", i);
+            TRC_MSG("Fast event %d", i);
         }
         
         // Events batched and written every 10ms
-        TRACE_MSG("20 events batched for efficiency");
+        TRC_MSG("20 events batched for efficiency");
     }
     
     // Final flush

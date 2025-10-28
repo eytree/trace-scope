@@ -20,8 +20,8 @@
  * @param n Test parameter
  */
 static void leaf(int n) {
-    TRACE_SCOPE();
-    TRACE_MSG("leaf n=%d", n);
+    TRC_SCOPE();
+    TRC_MSG("leaf n=%d", n);
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
 }
 
@@ -29,7 +29,7 @@ static void leaf(int n) {
  * @brief Branch function that calls leaf multiple times.
  */
 static void branch() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     for (int i = 0; i < 5; ++i) {
         leaf(i);
     }
@@ -42,7 +42,7 @@ static void branch() {
  * and verifies the output was created successfully.
  */
 TEST(multi_threaded_binary_dump) {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     
     // Run branch() in separate thread and main thread
     std::thread t(branch);
@@ -53,7 +53,8 @@ TEST(multi_threaded_binary_dump) {
     trace::flush_all();
     
     // Create binary dump and verify success
-    bool ok = trace::dump_binary("test_trace.bin");
+    std::string filename = trace::dump_binary("test_trace.bin");
+    bool ok = !filename.empty();
     TEST_ASSERT(ok, "dump_binary failed");
 
     // Verify binary file exists and has content

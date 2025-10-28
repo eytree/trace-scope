@@ -20,34 +20,34 @@
  * @brief Simulates work with logging.
  */
 void do_work(int item_id) {
-    TRACE_SCOPE();
-    TRACE_LOG << "Processing item " << item_id;
+    TRC_SCOPE();
+    TRC_LOG << "Processing item " << item_id;
     
     // Simulate some work
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     
-    TRACE_MSG("Item %d complete", item_id);
+    TRC_MSG("Item %d complete", item_id);
 }
 
 /**
  * @brief Worker function that processes multiple items.
  */
 void worker_thread(int worker_id, int item_count) {
-    TRACE_SCOPE();
-    TRACE_LOG << "Worker " << worker_id << " starting, processing " << item_count << " items";
+    TRC_SCOPE();
+    TRC_LOG << "Worker " << worker_id << " starting, processing " << item_count << " items";
     
     for (int i = 0; i < item_count; ++i) {
         do_work(worker_id * 100 + i);
     }
     
-    TRACE_LOG << "Worker " << worker_id << " done";
+    TRC_LOG << "Worker " << worker_id << " done";
 }
 
 /**
  * @brief Main function demonstrating hybrid mode.
  */
 int main() {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     
     std::printf("=== Hybrid Mode Demo ===\n\n");
     std::printf("Hybrid mode provides:\n");
@@ -63,12 +63,12 @@ int main() {
     trace::config.immediate_out = stdout;
     
     // Buffered output saved to file (complete history for post-processing)
-    trace::config.out = std::fopen("hybrid_buffered.log", "w");
+    trace::config.out = trace::safe_fopen("hybrid_buffered.log", "w");
     
     std::printf("Starting simulation with %d items across 3 threads...\n", 30);
     std::printf("Watch this output for real-time progress!\n\n");
     
-    TRACE_LOG << "Simulation starting";
+    TRC_LOG << "Simulation starting";
     
     // Create worker threads
     std::thread t1([](){ worker_thread(1, 10); });
@@ -80,7 +80,7 @@ int main() {
     t2.join();
     t3.join();
     
-    TRACE_LOG << "All workers complete";
+    TRC_LOG << "All workers complete";
     
     // Final flush to capture any remaining buffered events
     trace::flush_all();

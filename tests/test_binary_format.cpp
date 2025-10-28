@@ -20,9 +20,9 @@
  * @brief Simple test function.
  */
 void test_function(int value) {
-    TRACE_SCOPE();
-    TRACE_MSG("Test message with value=%d", value);
-    TRACE_LOG << "Stream message: value=" << value;
+    TRC_SCOPE();
+    TRC_MSG("Test message with value=%d", value);
+    TRC_LOG << "Stream message: value=" << value;
 }
 
 /**
@@ -32,22 +32,23 @@ void test_function(int value) {
  * The Python parser should be able to read this without errors.
  */
 TEST(binary_format_and_python_parser) {
-    TRACE_SCOPE();
+    TRC_SCOPE();
     
     // Generate some trace events
-    TRACE_LOG << "Starting binary format test";
+    TRC_LOG << "Starting binary format test";
     
     test_function(42);
     test_function(99);
     
-    TRACE_MSG("Test complete");
+    TRC_MSG("Test complete");
     
     // Flush to ensure all events are captured
     trace::flush_all();
     
     // Dump binary
     const char* bin_file = "test_binary_format.bin";
-    bool ok = trace::dump_binary(bin_file);
+    std::string filename = trace::dump_binary(bin_file);
+    bool ok = !filename.empty();
     TEST_ASSERT(ok, "Binary dump failed");
     
     std::printf("\n=== Binary Format Test ===\n");
