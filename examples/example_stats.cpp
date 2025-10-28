@@ -87,7 +87,7 @@ int main() {
     trace::config.track_memory = true;  // Sample RSS memory at each trace point
     
     // Ensure stats are registered for automatic exit
-    trace::internal::ensure_stats_registered();
+    trace::ensure_stats_registered();
     
     TRC_SCOPE();
     TRC_MSG("Main thread initializing workers");

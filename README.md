@@ -1,6 +1,6 @@
 # trace-scope
 
-**Version:** 0.14.1-alpha
+**Version:** 0.14.2-alpha
 
 A lightweight, header-only C++ library for function-scope tracing with per-thread ring buffers.
 
@@ -40,11 +40,11 @@ int main() {
 
 Output:
 ```
-example.cpp:   8 foo                  -> foo
-example.cpp:   9 foo                  - Processing data
-example.cpp:   8 foo                  <- foo  [123.45 us]
-example.cpp:  13 main                 -> main
-example.cpp:  14 main                 <- main  [234.56 us]
+[2025-10-28 23:40:15.123] (a1b2c3d4) example.cpp:   8 foo                  -> foo
+[2025-10-28 23:40:15.124] (a1b2c3d4) example.cpp:   9 foo                  - Processing data
+[2025-10-28 23:40:15.125] (a1b2c3d4) example.cpp:   8 foo                  <- foo  [123.45 us]
+[2025-10-28 23:40:15.126] (a1b2c3d4) example.cpp:  13 main                 -> main
+[2025-10-28 23:40:15.127] (a1b2c3d4) example.cpp:  14 main                 <- main  [234.56 us]
 ```
 
 ## Development Tools
@@ -152,7 +152,7 @@ trace::config.out = std::fopen("trace.log", "w");
 
 // Timing and metadata
 trace::config.print_timing = true;          // Show function durations (default: true)
-trace::config.print_timestamp = false;      // Show ISO timestamps (default: false, opt-in)
+trace::config.print_timestamp = true;       // Show ISO timestamps (default: true)
 trace::config.print_thread = true;          // Show thread IDs (default: true)
 
 // Prefix formatting
@@ -351,7 +351,7 @@ file = trace.log
 
 [display]
 print_timing = true
-print_timestamp = false
+print_timestamp = true
 print_thread = true
 colorize_depth = false
 

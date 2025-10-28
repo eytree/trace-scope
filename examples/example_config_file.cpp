@@ -45,7 +45,7 @@ int main() {
     }
     
     // You can still override specific settings programmatically after loading
-    trace::config.print_timestamp = true;  // Override file setting
+    // Timestamps are enabled by default
     
     std::printf("\nConfiguration applied:\n");
     std::printf("  - Output: %s\n", trace::config.out == stdout ? "stdout" : "file");

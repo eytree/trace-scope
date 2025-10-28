@@ -47,6 +47,9 @@ void level1() {
 }
 
 int main() {
+    // Enable ANSI colors (timestamps are enabled by default)
+    trace::config.colorize_depth = true;
+    
     TRC_SCOPE();
     
     std::printf("=== ANSI Color-Coded Trace Output ===\n\n");
@@ -57,9 +60,6 @@ int main() {
     std::printf("  \033[38;5;214mDepth 13-18: Yellow-orange\033[0m\n");
     std::printf("  \033[38;5;196mDepth 19-24: Orange-red\033[0m\n");
     std::printf("  \033[38;5;160mDepth 25-30: Deep red\033[0m\n\n");
-    
-    // Enable ANSI colors
-    trace::config.colorize_depth = true;
     
     std::printf("--- Colorized Output (with gradient) ---\n");
     level1();

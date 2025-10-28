@@ -11,10 +11,11 @@ types/async_queue.hpp
 types/registry.hpp
 types/scope.hpp
 types/stats.hpp
-variables.hpp
-functions.hpp
-namespaces/stats.hpp
+namespaces/ini_parser.hpp
+namespaces/filter_utils.hpp
 namespaces/shared_memory.hpp
 namespaces/dll_shared_state.hpp
 namespaces/internal.hpp
+variables.hpp
+functions.hpp
 macros.hpp
